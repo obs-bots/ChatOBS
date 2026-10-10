@@ -5,9 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Чат для OBS</title>
 <link rel="icon" type="image/png" href="web_icons.png?v=1">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdn.7tv.app">
+<link rel="preconnect" href="https://static-cdn.jtvnw.net">
+<link rel="preconnect" href="https://files.kick.com">
+<link rel="dns-prefetch" href="https://7tv.io">
+<script>
+/* шрифты нужны только странице настройки; в оверлее (есть ?c=...) они не грузятся и не блокируют показ */
+if (!/[?&]c=[^&]/.test(location.search)) {
+  var h = document.head, a = document.createElement('link'); a.rel = 'preconnect'; a.href = 'https://fonts.googleapis.com'; h.appendChild(a);
+  a = document.createElement('link'); a.rel = 'preconnect'; a.href = 'https://fonts.gstatic.com'; a.crossOrigin = ''; h.appendChild(a);
+  a = document.createElement('link'); a.rel = 'stylesheet'; a.href = 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap'; h.appendChild(a);
+}
+</script>
 <style>
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -373,6 +382,70 @@ function buildUrl(s){
 
 /* ================= УТИЛИТЫ ================= */
 const F = (u, o) => window.fetch(u, {...o, signal: AbortSignal.timeout(4000)});
+
+/* ---- кэш в localStorage с отметкой времени (не ломает старый формат: массив = «протухший») ---- */
+const LS = {
+  get(k, ttl){
+    try {
+      const o = JSON.parse(localStorage.getItem(k) || 'null');
+      if (Array.isArray(o)) return {v: o, fresh: false};
+      if (o && typeof o === 'object' && 't' in o) return {v: o.v, fresh: Date.now() - o.t < ttl};
+    } catch (e) {}
+    return null;
+  },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify({t: Date.now(), v})); } catch (e) {} }
+};
+
+/* ---- выбор размера картинки смайла под реальный размер на экране (меньше трафика и декодирования) ---- */
+const imgPx = s => s.fs * s.es * Math.min(2, window.devicePixelRatio || 1);
+const tv7Size = s => { const px = imgPx(s); return px <= 40 ? '1x' : px <= 80 ? '2x' : px <= 120 ? '3x' : '4x'; };
+const twSize = s => { const px = imgPx(s); return px <= 30 ? '1.0' : px <= 60 ? '2.0' : '3.0'; };
+
+/* ---- кэш загруженных и декодированных картинок: каждый смайл/значок качается один раз за сеанс ---- */
+const EC = new Map(), EC_MAX = 400;
+const imgKnown = url => { const e = EC.get(url); return !!(e && (e.url || (e.done && Date.now() - e.t < 30000))); };
+function warmImg(url, alts){
+  let e = EC.get(url);
+  if (e) {
+    if (e.url || !e.done || Date.now() - e.t < 30000) { EC.delete(url); EC.set(url, e); return e.p; }
+    EC.delete(url);
+  }
+  e = {img: null, url: null, done: false, t: Date.now()};
+  const list = [url, ...(alts || []).filter(u => u !== url)];
+  e.p = (async () => {
+    for (const u of list) {
+      const i = new Image(); i.referrerPolicy = 'no-referrer'; i.decoding = 'async';
+      const ok = await new Promise(res => { i.onload = () => res(true); i.onerror = () => res(false); i.src = u; });
+      if (ok) { e.img = i; e.url = u; try { await i.decode(); } catch (x) {} break; }
+    }
+    e.done = true; e.t = Date.now();
+    return e.url;
+  })();
+  EC.set(url, e);
+  while (EC.size > EC_MAX) EC.delete(EC.keys().next().value);
+  return e.p;
+}
+function mkImg(url){
+  const e = EC.get(url), hit = !!(e && e.img), i = hit ? e.img.cloneNode(false) : new Image();
+  if (!hit) { i.referrerPolicy = 'no-referrer'; i.src = url; }
+  i.decoding = 'async';
+  return i;
+}
+
+/* ---- постоянный кэш раскрасок ников 7TV (между перезапусками OBS) ---- */
+let PST = {};
+try { PST = JSON.parse(localStorage.getItem('obschat.pc') || '{}') || {}; } catch (e) { PST = {}; }
+const P_PTTL = 12 * 3600e3; let pstT = 0;
+function pstSet(k, v){
+  PST[k] = [Date.now(), v || 0];
+  if (pstT) return;
+  pstT = setTimeout(() => {
+    pstT = 0;
+    const ks = Object.keys(PST);
+    if (ks.length > 600) ks.sort((a, b) => PST[a][0] - PST[b][0]).slice(0, ks.length - 500).forEach(x => delete PST[x]);
+    try { localStorage.setItem('obschat.pc', JSON.stringify(PST)); } catch (e) {}
+  }, 5000);
+}
 const BOTS = new Set(['nightbot','streamelements','streamlabs','moobot','fossabot','wizebot','botrix','kickbot','sery_bot','soundalerts']);
 const LINK = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|ru|tv|gg|ly|me|io|net|org|xyz)\b/i;
 const GF = {'Inter':'Inter:wght@400;500;600;700','Roboto':'Roboto:wght@500;700','Montserrat':'Montserrat:wght@500;700','Nunito':'Nunito:wght@600;800','Oswald':'Oswald:wght@500;700','IBM Plex Mono':'IBM+Plex+Mono:wght@400;600'};
@@ -434,7 +507,7 @@ function parseIrc(line){
   const parts = rest.split(' ');
   return {tags, prefix, cmd: parts[0], params: parts.slice(1), trailing};
 }
-function twitchParts(text, emotesTag){
+function twitchParts(text, emotesTag, sz){
   const chars = Array.from(text), ranges = [];
   if (emotesTag) emotesTag.split('/').forEach(g => {
     const [id, pos] = g.split(':'); if (!pos) return;
@@ -444,7 +517,7 @@ function twitchParts(text, emotesTag){
   const parts = []; let i = 0;
   for (const r of ranges) {
     if (r.a > i) parts.push({t:'text', v: chars.slice(i, r.a).join('')});
-    parts.push({t:'emote', n:true, url:`https://static-cdn.jtvnw.net/emoticons/v2/${r.id}/default/dark/2.0`, name: chars.slice(r.a, r.b+1).join('')});
+    parts.push({t:'emote', n:true, url:`https://static-cdn.jtvnw.net/emoticons/v2/${r.id}/default/dark/${sz || '2.0'}`, name: chars.slice(r.a, r.b+1).join('')});
     i = r.b + 1;
   }
   if (i < chars.length) parts.push({t:'text', v: chars.slice(i).join('')});
@@ -453,7 +526,7 @@ function twitchParts(text, emotesTag){
 
 /* ================= KICK ================= */
 const KICK_PROXY = ''; // свой прокси, например 'https://my-worker.workers.dev/?u='
-async function kickInfo(slug){
+async function kickInfoNet(slug){
   const url = `https://kick.com/api/v2/channels/${slug}`;
   const one = async u => {
     const r = await F(u); if (!r.ok) throw 0;
@@ -466,6 +539,13 @@ async function kickInfo(slug){
     const sb = (j.subscriber_badges || []).map(x => ({months: +x.months || 0, src: (x.badge_image && x.badge_image.src) || ''})).filter(x => /^https:\/\//.test(x.src)).sort((a, b) => a.months - b.months);
     return {chatroom: +j.chatroom.id, userId: j.user_id || (j.user && j.user.id) || 0, subBadges: sb};
   } catch (e) { return null; }
+}
+async function kickInfo(slug){
+  const ck = 'kinfo:' + slug, c = LS.get(ck, 24 * 3600e3);
+  if (c && c.fresh && c.v && c.v.chatroom) return c.v;
+  const r = await kickInfoNet(slug);
+  if (r) { LS.set(ck, r); return r; }
+  return (c && c.v && c.v.chatroom) ? c.v : null;
 }
 const BI = {
   broadcaster:'<rect width="16" height="16" rx="3" fill="#e91916"/><rect x="6" y="2.5" width="4" height="7" rx="2" fill="#fff"/><path d="M4 8a4 4 0 008 0M8 12v2M5.5 14h5" stroke="#fff" stroke-width="1.2" fill="none"/>',
@@ -496,7 +576,7 @@ function badgeImg(o){
   return '';
 }
 function mkBadge(b){
-  if (b.img) { const i = new Image(); i.referrerPolicy = 'no-referrer'; i.src = b.img; i.alt = ''; i.title = b.title || ''; i.className = 'badge'; i.style.borderRadius = '3px'; return i; }
+  if (b.img) { const i = mkImg(b.img); i.alt = ''; i.title = b.title || ''; i.className = 'badge'; i.style.borderRadius = '3px'; return i; }
   const s = document.createElement('span'); s.title = b.title || b.kick || '';
   const lv = /level|lvl/.test(b.kick || '') ? (String(b.count || '').replace(/\D/g, '') || String(b.title || '').replace(/\D/g, '')).slice(0, 3) : '';
   if (lv) {
@@ -548,12 +628,12 @@ class Chat {
   constructor(root, s){
     this.root = root; this.s = s; this.gmap = new Map(); this.cmap = new Map();
     this.tbadges = {}; this.alive = true; this.onStatus = () => {}; this.raw = new Map(); this.onRaw = null;
-    this.pend = []; this.flushing = false;
+    this.pend = []; this.ord = []; this.flushing = false;
     this.stt = setInterval(() => { if (PQ.req) this.lg('7tv-paint', '7TV раскраски: запросов ' + PQ.req + ', ответов ' + PQ.ok + ', с раскраской ' + PQ.hit + ', ошибок ' + PQ.err + ', в очереди ' + PQ.q.length + (PQ.sample ? ' | пример: ' + PQ.sample : '')); }, 3000);
     applyStyle(root, s);
   }
   set(s){ this.s = s; applyStyle(this.root, s); this.fit(); }
-  clear(){ this.root.textContent = ''; this.pend = []; }
+  clear(){ this.root.textContent = ''; this.pend = []; this.ord = []; }
   stop(){ this.alive = false; clearInterval(this.timer); clearInterval(this.stt); clearInterval(this.wdt); try { this.ws && this.ws.close(); } catch (e) {} }
   status(t, c){
     if (!this.alive) return;
@@ -565,7 +645,7 @@ class Chat {
   async ready(){
     if (this.doneAll || this.waited) return;
     const all = Promise.allSettled([this.gp, this.chP, this.badgesP].filter(Boolean));
-    await Promise.race([all, new Promise(r => setTimeout(r, 2500))]);
+    await Promise.race([all, new Promise(r => setTimeout(r, 1500))]);
     this.waited = true;
     if (this.chP) all.then(() => { this.doneAll = true; });
   }
@@ -585,11 +665,13 @@ class Chat {
     }, 30000);
   }
   fit(){
-    const r = this.root, cs = getComputedStyle(r), avail = r.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const r = this.root, kids = r.children; if (kids.length < 2) return;
+    const cs = getComputedStyle(r), avail = r.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     if (!(avail > 0)) return;
-    const g = parseFloat(cs.rowGap) || 0; let h = -g;
-    for (const e of r.children) h += e.offsetHeight + g;
-    while (r.children.length > 1 && h > avail) { const e = r.firstChild; h -= e.offsetHeight + g; e.remove(); }
+    const g = parseFloat(cs.rowGap) || 0, hs = []; let h = -g;
+    for (const e of kids) { const x = e.offsetHeight; hs.push(x); h += x + g; } /* все замеры за один проход, без повторной вёрстки */
+    let n = 0; while (kids.length - n > 1 && h > avail) { h -= hs[n] + g; n++; }
+    while (n-- > 0) r.firstChild.remove();
   }
   lg(k, v){ this.raw.set(k, v); this.onRaw && this.onRaw(); }
   start(){
@@ -597,22 +679,35 @@ class Chat {
     this.s.p === 'twitch' ? this.twitch() : this.kick();
   }
 
-  async load7tv(url, map){
-    const ck = 'tv7:' + url, put = a => { for (const [i, n, z] of a) map.set(n, {id: i, zw: !!z}); };
+  /* наборы 7TV: сначала берём кэш (смайлы работают с первого сообщения), свежий кэш — без запроса,
+     старый — обновляем в фоне; периодическое обновление идёт с force */
+  async fetch7tv(url, map, ck, put){
     for (const u of [url, url.replace('https://7tv.io', 'https://api.7tv.app')]) {
       try {
         const r = await F(u); if (!r.ok) continue;
         const j = await r.json();
         const a = (j.emotes || (j.emote_set && j.emote_set.emotes) || []).map(e => [e.id, e.name, (((e.flags || 0) & 1) || (((e.data && e.data.flags) || 0) & 256)) ? 1 : 0]);
-        put(a); try { localStorage.setItem(ck, JSON.stringify(a)); } catch (e) {}
+        put(a); LS.set(ck, a);
         return a.length;
       } catch (e) {}
     }
-    try { const a = JSON.parse(localStorage.getItem(ck) || 'null'); if (a) { put(a); return a.length; } } catch (e) {}
     return 0;
   }
-  async loadKick7tv(uid){
-    for (const pl of ['kick', 'KICK']) if (await this.load7tv(`https://7tv.io/v3/users/${pl}/${uid}`, this.cmap)) return true;
+  async load7tv(url, map, force){
+    const ck = 'tv7:' + url, put = a => { for (const [i, n, z] of a) map.set(n, {id: i, zw: !!z}); };
+    const c = LS.get(ck, 15 * 60e3), has = !!(c && Array.isArray(c.v) && c.v.length);
+    if (has && !force) {
+      put(c.v);
+      if (!c.fresh) this.fetch7tv(url, map, ck, put);
+      return c.v.length;
+    }
+    const n = await this.fetch7tv(url, map, ck, put);
+    if (n) return n;
+    if (has) { put(c.v); return c.v.length; }
+    return 0;
+  }
+  async loadKick7tv(uid, force){
+    for (const pl of ['kick', 'KICK']) if (await this.load7tv(`https://7tv.io/v3/users/${pl}/${uid}`, this.cmap, force)) return true;
     return false;
   }
   async find7tvKickId(slug){
@@ -628,9 +723,9 @@ class Chat {
     }
     return 0;
   }
-  async loadBySv(v){
+  async loadBySv(v, force){
     v = String(v || '').trim(); if (!v) return;
-    const bySet = id => this.load7tv(`https://7tv.io/v3/emote-sets/${id}`, this.cmap);
+    const bySet = id => this.load7tv(`https://7tv.io/v3/emote-sets/${id}`, this.cmap, force);
     const byUser = async id => {
       try {
         const j = await (await F(`https://7tv.io/v3/users/${id}`)).json();
@@ -644,13 +739,13 @@ class Chat {
     return 0;
   }
   with7tv(parts){
-    const out = [];
+    const out = [], sz = tv7Size(this.s);
     for (const p of parts) {
       if (p.t !== 'text') { out.push(p); continue; }
       p.v.split(/(\s+)/).forEach(tok => {
         if (!tok) return;
         const e = this.cmap.get(tok) || this.gmap.get(tok);
-        if (e) out.push({t:'emote', id: e.id, url:`https://cdn.7tv.app/emote/${e.id}/2x.webp`, name: tok, zw: e.zw});
+        if (e) out.push({t:'emote', id: e.id, url:`https://cdn.7tv.app/emote/${e.id}/${sz}.webp`, alts: [`${sz}.png`, `${sz}.gif`, '2x.webp', '1x.webp', '3x.webp', '2x.avif'].map(x => `https://cdn.7tv.app/emote/${e.id}/${x}`), name: tok, zw: e.zw});
         else { const l = out[out.length-1]; if (l && l.t === 'text' && l._m) l.v += tok; else out.push({t:'text', v: tok, _m: true}); }
       });
     }
@@ -701,6 +796,7 @@ class Chat {
       const job = PQ.q.pop();
       PQ.run++;
       this.loadPaint(job.plat, job.uid).then(v => {
+        if (v !== undefined) pstSet(job.k, v);
         UCACHE.set(job.k, {v: v === undefined ? null : v, t: Date.now(), ttl: v === undefined ? P_ERR_TTL : P_TTL});
         job.res(v === undefined ? null : v);
       }, () => job.res(null)).finally(() => { PQ.run--; this.pumpPaints(); });
@@ -709,10 +805,13 @@ class Chat {
   paintFor(plat, uid){
     if (!uid) return Promise.resolve(null);
     const k = plat + ':' + uid, c = UCACHE.get(k);
+    if (UCACHE.size > 3000) { let n = 0; for (const key of UCACHE.keys()) { UCACHE.delete(key); if (++n >= 1000) break; } }
     if (c) {
       if (c.p) return c.p;
       if (Date.now() - c.t < c.ttl) return Promise.resolve(c.v);
     }
+    const ps = PST[k];
+    if (Array.isArray(ps) && Date.now() - ps[0] < P_PTTL) { const v = ps[1] || null; UCACHE.set(k, {v, t: Date.now(), ttl: P_TTL}); return Promise.resolve(v); }
     const p = new Promise(res => {
       PQ.q.push({k, plat, uid, res});
       if (PQ.q.length > P_QMAX) { const old = PQ.q.shift(); UCACHE.delete(old.k); old.res(null); }
@@ -721,41 +820,73 @@ class Chat {
     UCACHE.set(k, {p, t: Date.now(), ttl: P_TTL});
     return p;
   }
-  _push(el){
+  cap(){ return Math.max(8, Math.ceil(this.root.clientHeight / Math.max(10, this.s.fs * 1.1)) + 2); }
+  /* Очередь с сохранением порядка: сообщение ждёт свои новые смайлы (не дольше 300 мс),
+     при этом остальные сообщения не тормозят: ждут параллельно, а выходят строго по порядку. */
+  _queue(f, items, meta){
     if (!this.alive) return;
-    this.pend.push(el);
+    if (meta) { f.id = meta.id; f.login = meta.login; }
+    const it = {f, done: true};
+    this.ord.push(it);
+    if (items && items.length && this.ord.length < this.cap()) {
+      const need = [...new Map(items.filter(p => p.url && !imgKnown(p.url)).map(p => [p.url, p])).values()];
+      if (need.length) {
+        it.done = false;
+        const fin = () => { if (!it.done) { it.done = true; this.drain(); } };
+        Promise.all(need.map(p => warmImg(p.url, p.alts))).then(fin, fin);
+        setTimeout(fin, 300);
+      }
+    }
+    this.drain();
+  }
+  drain(){
+    if (!this.alive) { this.ord = []; return; }
+    const lim = this.cap() * 2;
+    if (this.ord.length > lim) this.ord.splice(0, this.ord.length - lim); /* при шквале старые всё равно уйдут за экран */
+    while (this.ord.length && this.ord[0].done) this._push(this.ord.shift().f);
+  }
+  _push(f){
+    if (!this.alive) return;
+    this.pend.push(f);
     if (this.flushing) return;
     this.flushing = true;
     let done = false;
     const go = () => { if (done) return; done = true; this.flushing = false; this.flush(); };
     requestAnimationFrame(go); setTimeout(go, 120); /* если вкладка/источник скрыт, rAF не идёт */
   }
+  fitSoon(){
+    if (this._fs) return; this._fs = true;
+    setTimeout(() => { this._fs = false; this.alive && this.fit(); }, 50);
+  }
   flush(){
     if (!this.alive) { this.pend = []; return; }
-    const s = this.s;
-    const cap = Math.max(8, Math.ceil(this.root.clientHeight / Math.max(10, s.fs * 1.1)) + 2);
+    const s = this.s, cap = this.cap();
     let batch = this.pend; this.pend = [];
-    if (batch.length > cap) batch = batch.slice(-cap); /* при потоке сообщений старые всё равно уйдут за экран */
+    if (batch.length > cap) batch = batch.slice(-cap); /* DOM строится только для тех, что реально поместятся */
+    const els = [];
+    for (const f of batch) { try { els.push(f()); } catch (e) {} }
     const frag = document.createDocumentFragment();
-    for (const el of batch) frag.appendChild(el);
+    for (const el of els) frag.appendChild(el);
     this.root.appendChild(frag);
     let extra = this.root.children.length - s.mx;
     while (extra-- > 0) this.root.firstChild.remove();
     this.fit();
-    if (s.fo > 0) for (const el of batch) setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 750); }, s.fo * 1000);
+    if (s.fo > 0) for (const el of els) setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 750); }, s.fo * 1000);
   }
   _reward(m){
     if (!this.s.sr) return;
     if (!m.demo) this.hasLive = true;
-    const el = document.createElement('div'); el.className = 'msg rw';
-    const t = document.createElement('span'); t.textContent = 'Получено: ' + (m.reward.title || 'награда'); el.appendChild(t);
-    if (m.reward.cost) {
-      const c = document.createElement('span'); c.className = 'rwc';
-      c.innerHTML = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#ffd43b"/><circle cx="10" cy="10" r="6" fill="none" stroke="#b8860b" stroke-width="1.6"/></svg>';
-      c.appendChild(document.createTextNode(String(m.reward.cost))); el.appendChild(c);
-    }
-    if (m.reward.user) { const u = document.createElement('span'); u.className = 'rwu'; u.textContent = '· ' + m.reward.user; el.appendChild(u); }
-    this._push(el);
+    this._queue(() => {
+      const el = document.createElement('div'); el.className = 'msg rw';
+      const t = document.createElement('span'); t.textContent = 'Получено: ' + (m.reward.title || 'награда'); el.appendChild(t);
+      if (m.reward.cost) {
+        const c = document.createElement('span'); c.className = 'rwc';
+        c.innerHTML = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#ffd43b"/><circle cx="10" cy="10" r="6" fill="none" stroke="#b8860b" stroke-width="1.6"/></svg>';
+        c.appendChild(document.createTextNode(String(m.reward.cost))); el.appendChild(c);
+      }
+      if (m.reward.user) { const u = document.createElement('span'); u.className = 'rwu'; u.textContent = '· ' + m.reward.user; el.appendChild(u); }
+      return el;
+    }, []);
   }
   add(m){ try { this._add(m); } catch (e) {} }
   _add(m){
@@ -769,48 +900,65 @@ class Chat {
     }
     if (!m.demo) this.hasLive = true;
 
-    const el = document.createElement('div'); el.className = 'msg';
-    if (m.id) el.dataset.id = m.id;
-    el.dataset.login = m.login || '';
-
-    const head = document.createElement('span'); head.className = 'head';
-    (m.badges || []).forEach(b => head.appendChild(mkBadge(b)));
-    const nm = document.createElement('span'); nm.className = 'name';
-    nm.textContent = m.name; nm.style.color = fixColor(m.color, m.name);
-    if (s.tv && s.pt && m.uid && !m.sys && !m.demo) this.paintFor(m.plat, m.uid).then(css => { if (css) applyPaint(nm, css); });
-    head.appendChild(nm);
-    if (!m.action) { const sp = document.createElement('span'); sp.className = 'sep'; sp.textContent = ':'; head.appendChild(sp); }
-    else { const sp = document.createElement('span'); sp.className = 'sep'; head.appendChild(sp); }
-
-    const body = document.createElement('span'); body.className = 'body';
-    if (m.action) body.style.fontStyle = 'italic';
-
     let parts = m.parts;
     if (s.tv) parts = this.with7tv(parts);
-    let last = null;
-    for (const p of parts) {
-      if (p.t === 'emote') {
-        if (p.n && !s.em) { body.appendChild(document.createTextNode(p.name)); last = null; continue; }
-        const img = new Image(); img.referrerPolicy = 'no-referrer'; img.src = p.url; img.alt = p.name; img.className = 'emote'; img.decoding = 'async';
-        if (p.id) {
-          const fb = ['2x.avif', '2x.png', '2x.gif', '3x.webp', '1x.webp']; let fi = 0;
-          img.onerror = () => { if (fi < fb.length) img.src = `https://cdn.7tv.app/emote/${p.id}/${fb[fi++]}`; else this.lg('img', 'Картинки смайлов 7TV не загружаются: проверьте доступ к cdn.7tv.app'); };
+    /* что нужно догрузить до показа: смайлы и значки */
+    const items = [];
+    for (const p of parts) if (p.t === 'emote' && !(p.n && !s.em)) items.push(p);
+    if (s.bd) for (const b of (m.badges || [])) if (b.img) items.push({url: b.img});
+    /* раскраску ника запрашиваем сразу при получении, а не при показе */
+    const pp = (this.ord.length < this.cap() && s.tv && s.pt && m.uid && !m.sys && !m.demo) ? this.paintFor(m.plat, m.uid) : null;
+
+    const build = () => {
+      const el = document.createElement('div'); el.className = 'msg';
+      if (m.id) el.dataset.id = m.id;
+      el.dataset.login = m.login || '';
+
+      const head = document.createElement('span'); head.className = 'head';
+      (m.badges || []).forEach(b => head.appendChild(mkBadge(b)));
+      const nm = document.createElement('span'); nm.className = 'name';
+      nm.textContent = m.name; nm.style.color = fixColor(m.color, m.name);
+      if (pp) pp.then(css => { if (css) applyPaint(nm, css); });
+      head.appendChild(nm);
+      if (!m.action) { const sp = document.createElement('span'); sp.className = 'sep'; sp.textContent = ':'; head.appendChild(sp); }
+      else { const sp = document.createElement('span'); sp.className = 'sep'; head.appendChild(sp); }
+
+      const body = document.createElement('span'); body.className = 'body';
+      if (m.action) body.style.fontStyle = 'italic';
+
+      let last = null;
+      for (const p of parts) {
+        if (p.t === 'emote') {
+          if (p.n && !s.em) { body.appendChild(document.createTextNode(p.name)); last = null; continue; }
+          const img = mkImg(p.url); img.alt = p.name; img.className = 'emote';
+          if (!img.complete) img.onload = () => this.fitSoon();
+          if (p.alts && p.alts.length) {
+            let fi = 0;
+            img.onerror = () => { if (fi < p.alts.length) img.src = p.alts[fi++]; else this.lg('img', 'Картинки смайлов 7TV не загружаются: проверьте доступ к cdn.7tv.app'); };
+          }
+          if (p.zw && last) { img.classList.add('zw'); last.appendChild(img); continue; }
+          const st = document.createElement('span'); st.className = 'estack'; st.appendChild(img);
+          body.appendChild(st); last = st;
+        } else {
+          body.appendChild(document.createTextNode(p.v));
+          if (p.v.trim()) last = null;
         }
-        if (p.zw && last) { img.classList.add('zw'); last.appendChild(img); continue; }
-        const st = document.createElement('span'); st.className = 'estack'; st.appendChild(img);
-        body.appendChild(st); last = st;
-      } else {
-        body.appendChild(document.createTextNode(p.v));
-        if (p.v.trim()) last = null;
       }
-    }
-    if (m.reply && s.rp) { const rp = document.createElement('span'); rp.className = 'reply'; rp.textContent = '↪ ' + m.reply.name + ': ' + m.reply.text; el.appendChild(rp); }
-    if (m.sys) { el.classList.add('sys'); el.appendChild(body); } else el.append(head, body);
-    if (s.mn && s.mn.toLowerCase().split(/[\s,]+/).filter(Boolean).some(w => (m.text || '').toLowerCase().includes(w))) el.classList.add('hi');
-    this._push(el);
+      if (m.reply && s.rp) { const rp = document.createElement('span'); rp.className = 'reply'; rp.textContent = '↪ ' + m.reply.name + ': ' + m.reply.text; el.appendChild(rp); }
+      if (m.sys) { el.classList.add('sys'); el.appendChild(body); } else el.append(head, body);
+      if (s.mn && s.mn.toLowerCase().split(/[\s,]+/).filter(Boolean).some(w => (m.text || '').toLowerCase().includes(w))) el.classList.add('hi');
+      return el;
+    };
+    this._queue(build, items, {id: m.id, login: m.login});
   }
-  delId(id){ this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.id === id) e.remove(); }); }
-  delUser(l){ this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.login === l) e.remove(); }); }
+  delId(id){
+    this.pend = this.pend.filter(f => f.id !== id); this.ord = this.ord.filter(it => it.f.id !== id);
+    this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.id === id) e.remove(); });
+  }
+  delUser(l){
+    this.pend = this.pend.filter(f => f.login !== l); this.ord = this.ord.filter(it => it.f.login !== l);
+    this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.login === l) e.remove(); });
+  }
 
   /* ----- Twitch ----- */
   twitch(){
@@ -839,14 +987,14 @@ class Chat {
         this.status('подключено: ' + ch, 'ok');
         if (!this.roomId && t['room-id']) {
           this.roomId = t['room-id'];
-          this.loadCh = async () => {
-            if (this.s.sv) { const n = await this.loadBySv(this.s.sv); this.lg('7tv-sv', '7TV: по ссылке загружено смайлов: ' + (n || 0)); }
-            await this.load7tv(`https://7tv.io/v3/users/twitch/${this.roomId}`, this.cmap);
+          this.loadCh = async (force) => {
+            if (this.s.sv) { const n = await this.loadBySv(this.s.sv, force); this.lg('7tv-sv', '7TV: по ссылке загружено смайлов: ' + (n || 0)); }
+            await this.load7tv(`https://7tv.io/v3/users/twitch/${this.roomId}`, this.cmap, force);
             this.lg('7tv-uid', '7TV: Twitch ID = ' + this.roomId);
             this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size);
             this.tvDone();
           };
-          this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(), 300000);
+          this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(true), 600000);
           this.badgesP = this.loadBadges(this.roomId, ch);
         }
         break;
@@ -861,7 +1009,7 @@ class Chat {
         const RW = {'highlighted-message': 'Выделить моё сообщение', 'animated-message': 'Анимированное сообщение', 'gigantified-emote-message': 'Гигантский смайл', 'skip-subs-mode-message': 'Сообщение в режиме «только подписчики»'};
         if (RW[t['msg-id']]) this.add({reward: {title: RW[t['msg-id']]}});
         else if (t['custom-reward-id']) this.add({reward: {title: 'Награда за баллы'}});
-        this.add({uid: t['user-id'], plat: 'twitch', id: t.id, login, name: t['display-name'] || login, color: t.color, badges, text, action, parts: twitchParts(text, t.emotes), reply: t['reply-parent-msg-body'] ? {name: t['reply-parent-display-name'] || '', text: t['reply-parent-msg-body']} : null});
+        this.add({uid: t['user-id'], plat: 'twitch', id: t.id, login, name: t['display-name'] || login, color: t.color, badges, text, action, parts: twitchParts(text, t.emotes, twSize(this.s)), reply: t['reply-parent-msg-body'] ? {name: t['reply-parent-display-name'] || '', text: t['reply-parent-msg-body']} : null});
         break;
       }
       case 'CLEARCHAT': if (m.trailing) this.delUser(m.trailing.toLowerCase()); else this.clear(); break;
@@ -878,6 +1026,8 @@ class Chat {
     const putG = a => { for (const b of a || []) put(b.setID, b.version, b.imageURL); };
     const n = () => Object.keys(this.tbadges).length;
     let hasCh = false;
+    const bc = LS.get('tbd:' + id, 12 * 3600e3);
+    if (bc && bc.fresh && bc.v && Object.keys(bc.v).length >= 5) { Object.assign(this.tbadges, bc.v); this.lg('tw-badges', 'Twitch: значки из кэша ' + n()); return; }
     if (/^\d+$/.test(String(id))) {
       const g = await getJ('https://gql.twitch.tv/gql', {method: 'POST', headers: {'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json'}, body: JSON.stringify({query: `query{badges{setID version imageURL(size:DOUBLE)}user(id:"${id}"){broadcastBadges{setID version imageURL(size:DOUBLE)}}}`})});
       const d = g && g.data;
@@ -885,6 +1035,7 @@ class Chat {
     }
     if (n() < 5) putA(await getJ('https://api.ivr.fi/v2/twitch/badges/global'));
     if (!hasCh) putA(await getJ(`https://api.ivr.fi/v2/twitch/badges/channel?login=${encodeURIComponent(login)}`));
+    if (n() >= 5) LS.set('tbd:' + id, this.tbadges);
     this.lg('tw-badges', 'Twitch: загружено картинок значков ' + n());
     this.btries = (this.btries || 0) + 1;
     if (!n() && this.alive && this.btries < 4) setTimeout(() => this.alive && this.loadBadges(id, login), 20000);
@@ -902,16 +1053,16 @@ class Chat {
     }
     if (!id) { this.status('канал не найден: укажите Chatroom ID в «Дополнительно»', 'err'); return; }
     this.kickUid = uid;
-    this.loadCh = async () => {
+    this.loadCh = async (force) => {
       let src = this.kickUid ? (+this.s.ku ? 'вручную' : 'API Kick') : '';
-      if (this.s.sv) { const n = await this.loadBySv(this.s.sv); this.lg('7tv-sv', '7TV: по ссылке загружено смайлов: ' + (n || 0)); }
-      if (!this.kickUid) { this.kickUid = await this.find7tvKickId(slug); if (this.kickUid) src = 'поиск в 7TV по нику'; }
-      if (this.kickUid) await this.loadKick7tv(this.kickUid);
+      if (this.s.sv) { const n = await this.loadBySv(this.s.sv, force); this.lg('7tv-sv', '7TV: по ссылке загружено смайлов: ' + (n || 0)); }
+      if (!this.kickUid) { const kc = LS.get('tv7kid:' + slug, 7 * 864e5); if (kc && kc.fresh && kc.v) { this.kickUid = kc.v; src = 'кэш'; } else { this.kickUid = await this.find7tvKickId(slug); if (this.kickUid) { src = 'поиск в 7TV по нику'; LS.set('tv7kid:' + slug, this.kickUid); } } }
+      if (this.kickUid) await this.loadKick7tv(this.kickUid, force);
       this.lg('7tv-uid', '7TV: Kick ID = ' + (this.kickUid || 'не найден') + (src ? ' (' + src + ')' : ''));
       this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size);
       this.tvDone();
     };
-    this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(), 300000);
+    this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(true), 600000);
     const open = () => {
       if (!this.alive) return;
       this.status('подключение…', 'wait');
