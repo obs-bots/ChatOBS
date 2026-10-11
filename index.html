@@ -38,10 +38,6 @@ html,body{margin:0;min-height:100%}
 .chat .name.paint{-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
 .chat.shadow .msg .name.paint{text-shadow:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.85))}
 .chat.nonm .name.paint{background:none!important;-webkit-text-fill-color:currentColor;filter:none!important}
-.chat .msg.rw{display:flex;align-items:center;flex-wrap:wrap;gap:.35em;background:rgba(145,70,255,.45);font-weight:600;border-left:4px solid #9146ff}
-.chat .msg.rw .rwc{display:inline-flex;align-items:center;gap:.25em;opacity:.95}
-.chat .msg.rw .rwu{opacity:.75;font-weight:500}
-.chat .msg.rw svg{width:1.05em;height:1.05em;flex:none}
 .chat.nobd .badge{display:none}
 .chat.anim .msg{animation:msgin .28s ease-out}
 .chat .msg.out{opacity:0;transition:opacity .7s}
@@ -139,10 +135,9 @@ h1{font-size:34px;font-weight:500;text-align:center;margin:0 0 14px;letter-spaci
 @media(prefers-reduced-motion:reduce){.chat.anim .msg{animation:none}}
 button:focus-visible,select:focus-visible,summary:focus-visible,.row input:focus-visible{outline:2px solid var(--accent,#8bff4f);outline-offset:2px}
 .row input.bad{border-color:#ff5d5d}
-.chat .reply{display:block;font-size:.7em;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat .reply{display:block;font-size:.7em;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:.6em .8em;margin:-.6em -.8em}
 .chat .msg.hi{outline:2px solid #ffd43b;outline-offset:-2px}
-.chat .rwtag{opacity:.95;font-weight:600;color:#d9c2ff}
-.chat .msg.hlm{background:linear-gradient(90deg,rgba(145,70,255,.38),rgba(145,70,255,.16));border-left:3px solid rgba(191,148,255,.7);box-shadow:0 0 10px rgba(145,70,255,.22)}
+.chat .msg.hlm{background:rgba(145,70,255,.2)}
 .chat .msg.sys{background:rgba(136,68,255,.5);font-weight:600}
 
 /* ---------- компактный вид ---------- */
@@ -370,10 +365,10 @@ const DEF = {
   fs:22, ff:'Inter', tc:'ffffff', sh:1, cl:'inline',
   bgo:40, bgc:'000000', br:10, gap:6, an:1, dir:'b',
   nm:1, bd:1, em:1, tv:1, es:1.5, hc:0, hu:'',
-  mx:40, fo:0, fc:'', hb:0, hl:0, rp:1, sn:1, mn:'', pt:1, sr:1
+  mx:40, fo:0, fc:'', hb:0, hl:0, rp:1, sn:1, mn:'', pt:1
 };
 const KEYS = Object.keys(DEF);
-const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt','sr'];
+const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt'];
 const RNG = {fs:[8,200], bgo:[0,100], br:[0,60], gap:[0,60], es:[.5,5], mx:[1,200], fo:[0,600]};
 const FONT_OK = /^[\w .-]{1,40}$/;
 function clampS(s){
@@ -911,25 +906,9 @@ class Chat {
     this.scheduleFit();
     if (s.fo > 0) for (const el of els) setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 750); }, s.fo * 1000);
   }
-  _reward(m){
-    if (!this.s.sr) return;
-    if (!m.demo) this.hasLive = true;
-    this._queue(() => {
-      const el = document.createElement('div'); el.className = 'msg rw';
-      const t = document.createElement('span'); t.textContent = 'Получено: ' + (m.reward.title || 'награда'); el.appendChild(t);
-      if (m.reward.cost) {
-        const c = document.createElement('span'); c.className = 'rwc';
-        c.innerHTML = '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="9" fill="#ffd43b"/><circle cx="10" cy="10" r="6" fill="none" stroke="#b8860b" stroke-width="1.6"/></svg>';
-        c.appendChild(document.createTextNode(String(m.reward.cost))); el.appendChild(c);
-      }
-      if (m.reward.user) { const u = document.createElement('span'); u.className = 'rwu'; u.textContent = '· ' + m.reward.user; el.appendChild(u); }
-      return el;
-    }, []);
-  }
   add(m){ try { this._add(m); } catch (e) {} }
   _add(m){
     const s = this.s;
-    if (m.reward) return this._reward(m);
     if (!m.sys) {
       const isBroad = (m.badges || []).some(b => b.kick === 'broadcaster' || b.tw === 'broadcaster');
       if (s.hc && !isBroad && (m.text || '').trim().startsWith('!')) return;
@@ -1046,10 +1025,8 @@ class Chat {
         const login = m.prefix.split('!')[0];
         const badges = (t.badges || '').split(',').filter(Boolean)
           .map(b => this.tbadges[b] ? {img: this.tbadges[b], title: b} : (TW[b.split('/')[0]] ? {tw: b.split('/')[0], title: b.split('/')[0]} : null)).filter(Boolean);
-        const RW = {'highlighted-message': 'Выделить моё сообщение', 'animated-message': 'Анимированное сообщение', 'gigantified-emote-message': 'Гигантский смайл', 'skip-subs-mode-message': 'Сообщение в режиме «только подписчики»'};
-        const rewardTag = RW[t['msg-id']] || (t['custom-reward-id'] ? 'Награда за баллы' : '');
         const hlm = t['msg-id'] === 'highlighted-message';
-        this.add({hlm, rewardTag, uid: t['user-id'], plat: 'twitch', id: t.id, login, name: t['display-name'] || login, color: t.color, badges, text, action, parts: twitchParts(text, t.emotes, twSize(this.s)), reply: t['reply-parent-msg-body'] ? {name: t['reply-parent-display-name'] || '', text: t['reply-parent-msg-body']} : null});
+        this.add({hlm, uid: t['user-id'], plat: 'twitch', id: t.id, login, name: t['display-name'] || login, color: t.color, badges, text, action, parts: twitchParts(text, t.emotes, twSize(this.s)), reply: t['reply-parent-msg-body'] ? {name: t['reply-parent-display-name'] || '', text: t['reply-parent-msg-body']} : null});
         break;
       }
       case 'CLEARCHAT': if (m.trailing) this.delUser(m.trailing.toLowerCase()); else this.clear(); break;
@@ -1125,16 +1102,12 @@ class Chat {
     open();
   }
   kickReward(d){
-    this.lg('kick-reward', 'Kick: награда ' + JSON.stringify(d).slice(0, 300));
     const r = d.reward || {};
-    const title = d.reward_title || d.title || r.title || r.name;
+    const title = d.reward_title || d.title || r.title || r.name || '';
     const who = String(d.username || (d.user && d.user.username) || '').toLowerCase();
-    const cost = d.reward_cost ?? d.cost ?? d.price ?? d.reward_price ?? r.cost ?? r.price;
-    const cost_ = +cost > 0 ? +cost : 0;
     const pend = this.rwWait = this.rwWait || new Map();
-    if (pend.has(who)) { clearTimeout(pend.get(who).t); pend.delete(who); }
-    const tm = setTimeout(() => { pend.delete(who); this.add({reward: {title, cost: cost_, user: d.username || (d.user && d.user.username) || ''}}); }, 2500);
-    pend.set(who, {t: tm, title});
+    if (pend.has(who)) clearTimeout(pend.get(who).t);
+    pend.set(who, {t: setTimeout(() => pend.delete(who), 2500), title});
   }
   async kickMsg(d){
     await this.ready();
@@ -1164,10 +1137,10 @@ class Chat {
     if (!this.raw.has('identity-keys')) { this.raw.set('identity-keys', 'identity: ' + Object.keys(idn).join(', ') + ' | sender: ' + Object.keys(sd).join(', ')); this.onRaw && this.onRaw(); }
     for (const src of [idn, sd]) for (const v of Object.values(src)) if (Array.isArray(v)) v.forEach(pushB);
     if (!this.kickUid && sd.id && badges.some(b => b.kick === 'broadcaster')) { this.kickUid = sd.id; this.lg('7tv-uid', '7TV: Kick ID = ' + sd.id + ' (сообщение стримера)'); this.loadKick7tv(sd.id).then(() => { this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size); this.tvDone(); }); }
-    const lg_ = (sd.username || '').toLowerCase(); let hlm = false, rewardTag = '';
+    const lg_ = (sd.username || '').toLowerCase(); let hlm = false;
     const pw = this.rwWait && this.rwWait.get(lg_);
-    if (pw) { clearTimeout(pw.t); this.rwWait.delete(lg_); rewardTag = pw.title || 'Награда за баллы'; hlm = /выдел|highlight/i.test(rewardTag); }
-    this.add({hlm, rewardTag, uid: sd.id, plat: 'kick', id: String(d.id), login: (sd.username || '').toLowerCase(), name: sd.username || '?', color: idn.color, badges, text, parts, reply: md.original_message ? {name: (md.original_sender || {}).username || '', text: md.original_message.content || ''} : null});
+    if (pw) { clearTimeout(pw.t); this.rwWait.delete(lg_); hlm = /выдел|highlight/i.test(pw.title || ''); }
+    this.add({hlm, uid: sd.id, plat: 'kick', id: String(d.id), login: (sd.username || '').toLowerCase(), name: sd.username || '?', color: idn.color, badges, text, parts, reply: md.original_message ? {name: (md.original_sender || {}).username || '', text: md.original_message.content || ''} : null});
   }
 }
 
@@ -1179,14 +1152,12 @@ const DEMO = [
   {name:'Модератор', color:'#53fc18', badges:[{kick:'moderator', title:'Модератор'}], parts:[T('Не забывайте про правила чата')]},
   {name:'LongMessage', color:'#c77dff', badges:[{kick:'subscriber', title:'Подписчик'}], parts:[T('Длинное сообщение, чтобы проверить перенос строк, отступы и размер шрифта при разных настройках')]},
   {name:'Streamer', color:'#ff4d4d', badges:[{kick:'broadcaster', title:'Стример'}], parts:[T('Спасибо что смотрите!')]},
-  {reward:{title:'Выделить моё сообщение', cost:100, user:'Зритель_01'}},
-  {name:'Зритель_01', color:'#ff7a59', hlm:true, rewardTag:'Выделить моё сообщение', parts:[T('Это выделенное сообщение!')]}
+  {name:'Зритель_01', color:'#ff7a59', hlm:true, parts:[T('Это выделенное сообщение!')]}
 ];
 let demoI = 0;
 function demoMsg(chat){
   const d = DEMO[demoI++ % DEMO.length];
-  if (d.reward) return chat.add({demo: true, reward: d.reward});
-  chat.add({demo: true, hlm: !!d.hlm, rewardTag: d.rewardTag || '', id: 'demo' + Date.now() + demoI, login: d.name.toLowerCase(), name: d.name, color: d.color, badges: d.badges || [], text: d.parts.map(p => p.v || '').join(''), parts: d.parts.map(p => ({...p}))});
+  chat.add({demo: true, hlm: !!d.hlm, id: 'demo' + Date.now() + demoI, login: d.name.toLowerCase(), name: d.name, color: d.color, badges: d.badges || [], text: d.parts.map(p => p.v || '').join(''), parts: d.parts.map(p => ({...p}))});
 }
 
 /* ================= ОВЕРЛЕЙ-РЕЖИМ ================= */
@@ -1237,7 +1208,6 @@ const SCHEMA = [
     ['em','check','Смайлы платформы'],
     ['tv','check','Смайлы 7TV'],
     ['pt','check','Раскраски ников 7TV (градиенты, эффекты)'],
-    ['sr','check','Награды за баллы («Получено: …»)'],
     ['es','range','Размер смайлов',1,3,0.1,'×'],
     ['hc','check','Скрывать команды (начинаются с !)'],
     ['hb','check','Скрывать популярных ботов'],
