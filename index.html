@@ -23,7 +23,7 @@ if (!/[?&]c=[^&]/.test(location.search)) {
 html,body{margin:0;min-height:100%}
 
 /* ---------- ЧАТ (общие стили для оверлея и предпросмотра) ---------- */
-.chat{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;line-height:1.35;color:var(--tc,#fff);font-family:'Inter',system-ui,sans-serif;font-size:22px}
+.chat{display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;contain:content;line-height:1.35;color:var(--tc,#fff);font-family:'Inter',system-ui,sans-serif;font-size:22px}
 .chat .msg{align-self:flex-start;max-width:100%;background:var(--mbg,rgba(0,0,0,.4));border-radius:var(--br,10px);padding:.28em .6em;overflow-wrap:anywhere;word-break:break-word}
 .chat.shadow .msg{text-shadow:0 0 3px #000,0 1px 2px #000,0 0 7px rgba(0,0,0,.85)}
 .chat .name{font-weight:700}
@@ -62,11 +62,10 @@ body.ov{background:transparent!important}
 
 /* ---------- КОНФИГУРАТОР ---------- */
 body.cfg{
-  --accent:#8bff4f;--accent-ink:#0b1a02;--glow:rgba(139,255,79,.32);--tint:rgba(46,100,28,.38);
-  background:#07070c;color:#e6e7ef;font-family:'Inter',system-ui,sans-serif;min-height:100vh;
-  background-image:radial-gradient(130% 55% at 50% 0%,var(--tint),transparent 72%);background-repeat:no-repeat
+  --accent:#8bff4f;--accent-ink:#0b1a02;--glow:rgba(139,255,79,.32);
+  background:#07070c;color:#e6e7ef;font-family:'Inter',system-ui,sans-serif;min-height:100vh
 }
-body.cfg[data-p=twitch]{--accent:#8844ff;--accent-ink:#fff;--glow:rgba(136,68,255,.42);--tint:rgba(70,44,140,.42)}
+body.cfg[data-p=twitch]{--accent:#8844ff;--accent-ink:#fff;--glow:rgba(136,68,255,.42)}
 #app{min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:18px}
 .card{width:100%;background:#11141d;border:1px solid #222735;border-radius:30px;padding:28px 22px}
 .narrow{max-width:520px}
@@ -170,9 +169,8 @@ button:focus-visible,select:focus-visible,summary:focus-visible,.row input:focus
 /* ---------- СТАРТОВЫЙ ЭКРАН: стиль заставки «Розыгрыш в чате» ---------- */
 body.cfg{--rgb:83,252,24;--accent:#53fc18;--accent-ink:#0a0c08;--glow:rgba(83,252,24,.28);--mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;font-family:'Space Grotesk','Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;background:#08090d}
 body.cfg[data-p=twitch]{--rgb:145,70,255;--accent:#9146ff;--accent-ink:#fff;--glow:rgba(145,70,255,.32)}
-@keyframes splashIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:none}}
-#s1{max-width:420px;text-align:center;background:#11141c;border:1px solid rgba(255,255,255,.09);border-radius:26px;padding:40px 34px 34px;box-shadow:0 30px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.02) inset;animation:splashIn .7s cubic-bezier(.22,1,.36,1) backwards}
-#s2:not([hidden]){animation:splashIn .7s cubic-bezier(.22,1,.36,1) backwards}
+#s1{max-width:420px;text-align:center;background:#11141c;border:1px solid rgba(255,255,255,.09);border-radius:26px;padding:40px 34px 34px;box-shadow:0 30px 80px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.02) inset}
+#s2:not([hidden]){animation:cardin .7s cubic-bezier(.22,1,.36,1) backwards}
 #s1 .tabs{gap:10px;margin-bottom:20px}
 #s1 .tab{font:500 11px var(--mono);letter-spacing:.08em;padding:6px 13px;border:1px solid rgba(var(--r),.38);border-radius:999px;opacity:.45;transition:opacity .18s,box-shadow .18s,background .18s}
 #s1 .tab[data-p=kick]{--r:83,252,24}
@@ -198,7 +196,7 @@ body.cfg[data-p=twitch]{--rgb:145,70,255;--accent:#9146ff;--accent-ink:#fff;--gl
 @media(prefers-reduced-motion:reduce){#s1,#s2:not([hidden]){animation:none}}
 
 /* ---------- появление стартового экрана: пузырьки, очерёдность, свечение ---------- */
-body.cfg::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 34% 40% at 100% 0%,rgba(var(--rgb),.09),transparent 72%);filter:blur(30px);opacity:0;animation:aur 1.8s .1s ease-out forwards}
+body.cfg::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 62% 66% at 0 0,rgba(var(--rgb),.30),rgba(var(--rgb),.10) 45%,transparent 75%);opacity:0;animation:aur 1.8s .1s ease-out forwards}
 @keyframes aur{to{opacity:1}}
 #app{position:relative;z-index:1}
 #s1{position:relative;overflow:hidden;animation:cardin .9s cubic-bezier(.2,.9,.2,1) backwards}
@@ -206,25 +204,17 @@ body.cfg::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none
 @keyframes cardin{from{opacity:0;transform:translateY(26px) scale(.95);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @keyframes bub{from{opacity:0;transform:translateY(16px) scale(.9)}to{opacity:1;transform:none}}
-@keyframes ttl{from{opacity:0;letter-spacing:.14em;filter:blur(6px)}to{opacity:1;letter-spacing:-.02em;filter:none}}
 .deco{display:flex;flex-direction:column;gap:8px;margin:0 0 26px}
 .deco i{display:flex;align-items:center;gap:9px;width:var(--w);padding:9px 12px;border-radius:14px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.06);animation:bub .6s var(--d) cubic-bezier(.2,.9,.3,1.15) backwards}
 .deco i:nth-child(2){margin-left:auto}
 .deco i::before{content:'';flex:none;width:14px;height:14px;border-radius:5px;background:var(--accent);box-shadow:0 0 12px var(--glow)}
 .deco i::after{content:'';flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.2)}
-#s1 h1{animation:ttl 1s .55s cubic-bezier(.2,.8,.2,1) backwards}
-#s1 .tabs{animation:rise .6s .35s backwards}
-#s1 .sub{animation:rise .6s .85s backwards}
-#s1 .inrow{animation:rise .6s .95s backwards}
-#s1 .cta{position:relative;overflow:hidden;animation:rise .6s 1.05s backwards}
-#s1 .note{animation:rise .6s 1.15s backwards}
-#s1 .adv{animation:rise .6s 1.25s backwards}
+#s1 .cta{position:relative;overflow:hidden}
 #s1 .cta::after{content:'';position:absolute;top:0;bottom:0;left:-40%;width:30%;transform:skewX(-20deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);transition:left .6s}
 #s1 .cta:hover::after{left:120%}
 @media(prefers-reduced-motion:reduce){body.cfg::before{animation:none;opacity:1}#s1,#s1>*,.deco i{animation:none!important}}
 
 /* ---------- заставка: пузырьки сообщений летят вверх, мягкое свечение, быстрое появление ---------- */
-body.cfg::before{background:radial-gradient(ellipse 62% 66% at 0 0,rgba(var(--rgb),.30),rgba(var(--rgb),.10) 45%,transparent 75%);filter:none}
 body.cfg::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 58% 62% at 100% 100%,rgba(120,140,255,.28),rgba(120,140,255,.09) 45%,transparent 75%);opacity:0;animation:aur 1.8s .3s ease-out forwards}
 .spfx{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;transition:opacity .5s ease}
 .spfx.off{opacity:0}
@@ -256,19 +246,13 @@ body.cfg::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 #s1 .adv{animation:rise .5s .9s backwards}
 @media(prefers-reduced-motion:reduce){body.cfg::after{animation:none;opacity:1}.fb-layer{animation:none;opacity:1}}
 #s1{position:relative}
-.rl-wrap{display:flex;justify-content:center;margin-top:18px;animation:rise .5s .9s backwards}
+.rl-wrap{display:flex;justify-content:center;flex-wrap:wrap;gap:10px;margin-top:18px;position:relative;z-index:2;animation:rise .5s .9s backwards}
 #s1[hidden]+.rl-wrap{display:none}
-.rl-btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 26px;border-radius:16px;background:#11141c;border:1px solid rgba(var(--rgb),.45);color:#e8ebf3;font:600 14px 'Space Grotesk','Inter',sans-serif;text-decoration:none;transition:border-color .15s ease,background .15s ease,transform .1s ease}
-.rl-btn:hover{border-color:var(--accent);background:rgba(var(--rgb),.1)}
+.rl-btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 26px;border-radius:16px;background:#11141c!important;border:1px solid rgba(var(--rgb),.45);color:#e8ebf3!important;opacity:1!important;filter:none!important;font:600 14px 'Space Grotesk','Inter',sans-serif;text-decoration:none;transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease}
+.rl-btn:hover{border-color:var(--accent);box-shadow:inset 0 0 0 100px rgba(var(--rgb),.12)}
 .rl-btn:active{transform:scale(.98)}
 .rl-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.rl-btn{transition:border-color .15s ease,box-shadow .15s ease,transform .1s ease}
-.rl-btn:hover{background:#11141c;box-shadow:inset 0 0 0 100px rgba(var(--rgb),.12)}
 body.cfg{color-scheme:dark}
-.rl-wrap{position:relative;z-index:2}
-.rl-wrap{flex-wrap:wrap;gap:10px}
-.rl-btn{background:#11141c!important;color:#e8ebf3!important;opacity:1!important;filter:none!important}
-.rl-btn:hover{box-shadow:inset 0 0 0 100px rgba(var(--rgb),.12)}
 </style>
 </head>
 <body>
@@ -277,9 +261,9 @@ body.cfg{color-scheme:dark}
 
 <div id="app" hidden>
   <section id="s1" class="card narrow">
-    <div class="tabs">
-      <button class="tab" data-p="kick" type="button"><b>KICK</b></button>
-      <button class="tab" data-p="twitch" type="button"><b>TWITCH</b></button>
+    <div class="tabs" role="tablist">
+      <button role="tab" class="tab" data-p="kick" type="button"><b>KICK</b></button>
+      <button role="tab" class="tab" data-p="twitch" type="button"><b>TWITCH</b></button>
     </div>
     <div class="deco" aria-hidden="true"><i style="--w:70%;--d:.25s"></i><i style="--w:54%;--d:.33s"></i><i style="--w:82%;--d:.41s"></i></div>
     <h1>Чат для OBS</h1>
@@ -303,7 +287,7 @@ body.cfg{color-scheme:dark}
     <div class="grid">
       <div class="pv">
         <div class="pvbar">
-          <span id="st" class="st">подключение…</span>
+          <span id="st" class="st" aria-live="polite">подключение…</span>
           <span class="sp"></span>
           <button class="chip on" data-bg="checker" aria-pressed="true" type="button">клетка</button>
           <button class="chip" data-bg="dark" type="button">тёмный</button>
@@ -338,9 +322,20 @@ body.cfg{color-scheme:dark}
 (() => {
 'use strict';
 
+/* ================= КОНСТАНТЫ ================= */
+const EP = {
+  tv7: ['https://7tv.io', 'https://api.7tv.app'],
+  gql: ['https://7tv.io/v3/gql', 'https://api.7tv.app/v3/gql'],
+  kickApi: slug => `https://kick.com/api/v2/channels/${slug}`,
+  pusher: 'wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0-rc2&flash=false',
+  twIrc: 'wss://irc-ws.chat.twitch.tv:443',
+  twGqlId: 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+  kickCors: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url=']
+};
+
 /* ================= НАСТРОЙКИ ================= */
 const DEF = {
-  p:'kick', c:'', cr:'', ku:'', sv:'',
+  p:'kick', c:'', cr:'', ku:'', sv:'', px:'',
   fs:22, ff:'Inter', tc:'ffffff', sh:1, cl:'inline',
   bgo:40, bgc:'000000', br:10, gap:6, an:1, dir:'b',
   nm:1, bd:1, em:1, tv:1, es:1.5, hc:0, hu:'',
@@ -358,6 +353,7 @@ function clampS(s){
   if (!['inline','stack'].includes(s.cl)) s.cl = 'inline';
   if (s.p !== 'twitch') s.p = 'kick';
   if (!FONT_OK.test(String(s.ff))) s.ff = 'Inter';
+  s.px = String(s.px || '').trim().slice(0, 200);
   if (s.fc && !FONT_OK.test(String(s.fc))) s.fc = '';
   return s;
 }
@@ -381,7 +377,9 @@ function buildUrl(s){
 }
 
 /* ================= УТИЛИТЫ ================= */
-const F = (u, o) => window.fetch(u, {...o, signal: AbortSignal.timeout(4000)});
+const FETCH_MS = 4000;
+const toSig = () => (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(FETCH_MS) : undefined;
+const F = (u, o) => window.fetch(u, o ? {...o, signal: toSig()} : {signal: toSig()});
 
 /* ---- кэш в localStorage с отметкой времени (не ломает старый формат: массив = «протухший») ---- */
 const LS = {
@@ -525,25 +523,24 @@ function twitchParts(text, emotesTag, sz){
 }
 
 /* ================= KICK ================= */
-const KICK_PROXY = ''; // свой прокси, например 'https://my-worker.workers.dev/?u='
-async function kickInfoNet(slug){
-  const url = `https://kick.com/api/v2/channels/${slug}`;
+async function kickInfoNet(slug, proxy){
+  const url = EP.kickApi(slug);
   const one = async u => {
     const r = await F(u); if (!r.ok) throw 0;
     const j = await r.json(); if (!(j && j.chatroom && Number.isInteger(+j.chatroom.id) && +j.chatroom.id > 0)) throw 0;
     return j;
   };
-  const tries = KICK_PROXY ? [KICK_PROXY + encodeURIComponent(url)] : [url, `https://corsproxy.io/?${encodeURIComponent(url)}`, `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`];
+  const tries = proxy ? [proxy + encodeURIComponent(url)] : [url, ...EP.kickCors.map(p => p + encodeURIComponent(url))];
   try {
     const j = await Promise.any(tries.map(one));
     const sb = (j.subscriber_badges || []).map(x => ({months: +x.months || 0, src: (x.badge_image && x.badge_image.src) || ''})).filter(x => /^https:\/\//.test(x.src)).sort((a, b) => a.months - b.months);
     return {chatroom: +j.chatroom.id, userId: j.user_id || (j.user && j.user.id) || 0, subBadges: sb};
   } catch (e) { return null; }
 }
-async function kickInfo(slug){
+async function kickInfo(slug, proxy){
   const ck = 'kinfo:' + slug, c = LS.get(ck, 24 * 3600e3);
   if (c && c.fresh && c.v && c.v.chatroom) return c.v;
-  const r = await kickInfoNet(slug);
+  const r = await kickInfoNet(slug, proxy);
   if (r) { LS.set(ck, r); return r; }
   return (c && c.v && c.v.chatroom) ? c.v : null;
 }
@@ -604,7 +601,7 @@ function gradLayer(p){
   const fn = String(p.function || '').toUpperCase(), rep = p.repeat ? 'repeating-' : '';
   if (stops && fn === 'LINEAR_GRADIENT') return `${rep}linear-gradient(${+p.angle || 0}deg,${stops})`;
   if (stops && fn === 'RADIAL_GRADIENT') return `${rep}radial-gradient(${/^(circle|ellipse)$/i.test(p.shape || '') ? p.shape.toLowerCase() : 'circle'},${stops})`;
-  if (fn === 'URL' && /^https:\/\//.test(p.image_url || '')) return `url("${encodeURI(p.image_url)}")`;
+  if (fn === 'URL' && /^https:\/\//.test(p.image_url || '')) return `url("${encodeURI(p.image_url).replace(/["'()\\]/g, '')}")`;
   return '';
 }
 function paintCss(p){
@@ -625,11 +622,11 @@ function applyPaint(nm, css){
 
 /* ================= ЧАТ ================= */
 class Chat {
-  constructor(root, s){
-    this.root = root; this.s = s; this.gmap = new Map(); this.cmap = new Map();
+  constructor(root, s, diag){
+    this.root = root; this.s = s; this.diag = !!diag; this.gmap = new Map(); this.cmap = new Map();
     this.tbadges = {}; this.alive = true; this.onStatus = () => {}; this.raw = new Map(); this.onRaw = null;
     this.pend = []; this.ord = []; this.flushing = false;
-    this.stt = setInterval(() => { if (PQ.req) this.lg('7tv-paint', '7TV раскраски: запросов ' + PQ.req + ', ответов ' + PQ.ok + ', с раскраской ' + PQ.hit + ', ошибок ' + PQ.err + ', в очереди ' + PQ.q.length + (PQ.sample ? ' | пример: ' + PQ.sample : '')); }, 3000);
+    if (this.diag) this.stt = setInterval(() => { if (PQ.req) this.lg('7tv-paint', '7TV раскраски: запросов ' + PQ.req + ', ответов ' + PQ.ok + ', с раскраской ' + PQ.hit + ', ошибок ' + PQ.err + ', в очереди ' + PQ.q.length + (PQ.sample ? ' | пример: ' + PQ.sample : '')); }, 3000);
     applyStyle(root, s);
   }
   set(s){ this.s = s; applyStyle(this.root, s); this.fit(); }
@@ -682,7 +679,7 @@ class Chat {
   /* наборы 7TV: сначала берём кэш (смайлы работают с первого сообщения), свежий кэш — без запроса,
      старый — обновляем в фоне; периодическое обновление идёт с force */
   async fetch7tv(url, map, ck, put){
-    for (const u of [url, url.replace('https://7tv.io', 'https://api.7tv.app')]) {
+    for (const u of [url, ...EP.tv7.slice(1).map(b => url.replace('https://7tv.io', b))]) {
       try {
         const r = await F(u); if (!r.ok) continue;
         const j = await r.json();
@@ -713,7 +710,7 @@ class Chat {
   async find7tvKickId(slug){
     const norm = x => String(x || '').toLowerCase().replace(/[-_]/g, '');
     const names = [...new Set([slug, slug.replace(/-/g, '_'), slug.replace(/[-_]/g, '')])];
-    for (const ep of ['https://7tv.io/v3/gql', 'https://api.7tv.app/v3/gql']) for (const n of names) {
+    for (const ep of EP.gql) for (const n of names) {
       try {
         const r = await F(ep, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query: 'query($q:String!){users(query:$q){id username connections{id platform username display_name}}}', variables: {q: n}})});
         const j = await r.json();
@@ -744,9 +741,17 @@ class Chat {
       if (p.t !== 'text') { out.push(p); continue; }
       p.v.split(/(\s+)/).forEach(tok => {
         if (!tok) return;
-        const e = this.cmap.get(tok) || this.gmap.get(tok);
-        if (e) out.push({t:'emote', id: e.id, url:`https://cdn.7tv.app/emote/${e.id}/${sz}.webp`, alts: [`${sz}.png`, `${sz}.gif`, '2x.webp', '1x.webp', '3x.webp', '2x.avif'].map(x => `https://cdn.7tv.app/emote/${e.id}/${x}`), name: tok, zw: e.zw});
-        else { const l = out[out.length-1]; if (l && l.t === 'text' && l._m) l.v += tok; else out.push({t:'text', v: tok, _m: true}); }
+        const putText = v => { const l = out[out.length-1]; if (l && l.t === 'text' && l._m) l.v += v; else out.push({t:'text', v, _m: true}); };
+        const putEm = (e, name) => out.push({t:'emote', id: e.id, url:`https://cdn.7tv.app/emote/${e.id}/${sz}.webp`, alts: [`${sz}.png`, `${sz}.gif`, '2x.webp', '1x.webp', '3x.webp', '2x.avif'].map(x => `https://cdn.7tv.app/emote/${e.id}/${x}`), name, zw: e.zw});
+        let e = this.cmap.get(tok) || this.gmap.get(tok);
+        if (e) { putEm(e, tok); return; }
+        /* эмоут с пунктуацией: «слово,», «(слово)» */
+        const lead = (tok.match(/^[\p{P}\p{S}]+/u) || [''])[0];
+        const trail = (tok.match(/[\p{P}\p{S}]+$/u) || [''])[0];
+        const core = tok.slice(lead.length, tok.length - (tok.length > lead.length ? trail.length : 0));
+        const e2 = core ? (this.cmap.get(core) || this.gmap.get(core)) : null;
+        if (e2) { if (lead) putText(lead); putEm(e2, tok); if (trail && tok.length > lead.length) putText(trail); }
+        else putText(tok);
       });
     }
     return out;
@@ -756,7 +761,7 @@ class Chat {
     if (!/^[0-9A-Za-z]{20,32}$/.test(pid)) return null;
     if (PCACHE.has(pid)) return PCACHE.get(pid);
     const q = `query{cosmetics(list:["${pid}"]){paints{id kind name function color angle shape image_url repeat stops{at color center_at} shadows{x_offset y_offset radius color}}}}`;
-    for (const ep of ['https://7tv.io/v3/gql', 'https://api.7tv.app/v3/gql']) {
+    for (const ep of EP.gql) {
       try {
         const r = await F(ep, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query: q})});
         if (!r.ok) continue;
@@ -768,7 +773,7 @@ class Chat {
   }
   async loadPaint(plat, uid){
     PQ.req++;
-    for (const base of ['https://7tv.io', 'https://api.7tv.app']) {
+    for (const base of EP.tv7) {
       try {
         const r = await F(`${base}/v3/users/${plat}/${encodeURIComponent(uid)}`);
         if (r.status === 404) { PQ.ok++; return null; }
@@ -854,10 +859,12 @@ class Chat {
     const go = () => { if (done) return; done = true; this.flushing = false; this.flush(); };
     requestAnimationFrame(go); setTimeout(go, 120); /* если вкладка/источник скрыт, rAF не идёт */
   }
-  fitSoon(){
-    if (this._fs) return; this._fs = true;
-    setTimeout(() => { this._fs = false; this.alive && this.fit(); }, 50);
+  scheduleFit(){
+    if (this._sfit) return; this._sfit = true;
+    const raf = window.requestAnimationFrame || (f => setTimeout(f, 16));
+    raf(() => { this._sfit = false; this.alive && this.fit(); });
   }
+  fitSoon(){ this.scheduleFit(); }
   flush(){
     if (!this.alive) { this.pend = []; return; }
     const s = this.s, cap = this.cap();
@@ -870,7 +877,7 @@ class Chat {
     this.root.appendChild(frag);
     let extra = this.root.children.length - s.mx;
     while (extra-- > 0) this.root.firstChild.remove();
-    this.fit();
+    this.scheduleFit();
     if (s.fo > 0) for (const el of els) setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 750); }, s.fo * 1000);
   }
   _reward(m){
@@ -893,7 +900,8 @@ class Chat {
     const s = this.s;
     if (m.reward) return this._reward(m);
     if (!m.sys) {
-      if (s.hc && (m.text || '').trim().startsWith('!')) return;
+      const isBroad = (m.badges || []).some(b => b.kick === 'broadcaster' || b.tw === 'broadcaster');
+      if (s.hc && !isBroad && (m.text || '').trim().startsWith('!')) return;
       if (s.hu && s.hu.toLowerCase().split(/[\s,]+/).filter(Boolean).includes(m.login)) return;
       if (s.hb && BOTS.has(m.login)) return;
       if (s.hl && LINK.test(m.text || '')) return;
@@ -966,7 +974,7 @@ class Chat {
     const open = () => {
       if (!this.alive) return;
       this.status('подключение…', 'wait');
-      const ws = this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+      const ws = this.ws = new WebSocket(EP.twIrc);
       this.bind(ws, 'PING :keepalive', open);
       ws.onopen = () => {
         ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
@@ -1029,7 +1037,7 @@ class Chat {
     const bc = LS.get('tbd:' + id, 12 * 3600e3);
     if (bc && bc.fresh && bc.v && Object.keys(bc.v).length >= 5) { Object.assign(this.tbadges, bc.v); this.lg('tw-badges', 'Twitch: значки из кэша ' + n()); return; }
     if (/^\d+$/.test(String(id))) {
-      const g = await getJ('https://gql.twitch.tv/gql', {method: 'POST', headers: {'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json'}, body: JSON.stringify({query: `query{badges{setID version imageURL(size:DOUBLE)}user(id:"${id}"){broadcastBadges{setID version imageURL(size:DOUBLE)}}}`})});
+      const g = await getJ('https://gql.twitch.tv/gql', {method: 'POST', headers: {'Client-Id': EP.twGqlId, 'Content-Type': 'application/json'}, body: JSON.stringify({query: `query{badges{setID version imageURL(size:DOUBLE)}user(id:"${id}"){broadcastBadges{setID version imageURL(size:DOUBLE)}}}`})});
       const d = g && g.data;
       if (d) { putG(d.badges); putG(d.user && d.user.broadcastBadges); hasCh = !!d.user; }
     }
@@ -1047,7 +1055,7 @@ class Chat {
     let id = +this.s.cr || 0, uid = +this.s.ku || 0;
     if (!id) {
       this.status('поиск канала…', 'wait');
-      const info = await kickInfo(slug);
+      const info = await kickInfo(slug, this.s.px);
       if (!this.alive) return;
       if (info) { id = info.chatroom; uid = uid || info.userId; this.subBadges = info.subBadges || []; }
     }
@@ -1066,7 +1074,7 @@ class Chat {
     const open = () => {
       if (!this.alive) return;
       this.status('подключение…', 'wait');
-      const ws = this.ws = new WebSocket('wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0-rc2&flash=false');
+      const ws = this.ws = new WebSocket(EP.pusher);
       this.bind(ws, JSON.stringify({event:'pusher:ping', data:{}}), open);
       ws.onmessage = ev => {
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -1112,7 +1120,6 @@ class Chat {
       }
       // показываем только то, что у человека реально включено в чате Kick
       if (Object.entries(o).some(([k, v]) => (v === false && /equip|activ|enabl|select|show|visib|display/i.test(k)) || (v === true && /hidden|disabled/i.test(k)))) return;
-      const level = /level|lvl|уров/i.test(type + ' ' + (o.text || '') + ' ' + img) || Object.keys(o).some(k => /level|lvl/i.test(k));
       const key = type + '|' + (o.text || '') + '|' + (o.count || '') + '|' + img;
       if (seen.has(key)) return; seen.add(key);
       badges.push({kick: type, title: o.text || type, count: o.count, img, level});
@@ -1157,11 +1164,14 @@ document.body.classList.add('cfg');
 document.getElementById('app').hidden = false;
 loadFont('Inter'); loadFont('IBM Plex Mono');
 const $ = s => document.querySelector(s);
+window.addEventListener('error', e => { if (chat && chat.diag) chat.lg('js-err', 'JS: ' + (e.message || e.type) + ' @ ' + String(e.filename || '').split('/').pop() + ':' + e.lineno); });
+window.addEventListener('unhandledrejection', e => { if (chat && chat.diag) chat.lg('js-rej', 'Promise: ' + ((e.reason && e.reason.message) || e.reason)); });
 const FONTS = ['Inter','Roboto','Montserrat','Nunito','Oswald','IBM Plex Mono','Arial','Segoe UI'];
 let S = {...DEF}, chat = null;
 
 try { const sv = JSON.parse(localStorage.getItem('obschat.v1') || 'null'); if (sv) for (const k of KEYS) if (k in sv && typeof sv[k] === typeof DEF[k]) S[k] = sv[k]; clampS(S); } catch (e) {}
-const save = () => { try { localStorage.setItem('obschat.v1', JSON.stringify(S)); } catch (e) {} };
+let saveT = 0;
+const save = () => { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem('obschat.v1', JSON.stringify(S)); } catch (e) {} }, 250); };
 
 const SCHEMA = [
   ['Текст', [
@@ -1201,7 +1211,7 @@ const SCHEMA = [
     ['fo','range','Исчезать через (0 = не исчезать)',0,120,1,'с']
   ]]
 ];
-const ADV = [['cr','text','Chatroom ID'],['ku','text','Kick User ID (для 7TV)'],['sv','text','7TV: ссылка на набор смайлов или профиль']];
+const ADV = [['cr','text','Chatroom ID'],['ku','text','Kick User ID (для 7TV)'],['sv','text','7TV: ссылка на набор смайлов или профиль'],['px','text','Свой CORS-прокси для Kick API (https://…/?u=)']];
 
 function ctl(it){
   const [k, type, label, a, b, c, u] = it;
@@ -1248,7 +1258,7 @@ function buildPanel(){
   adv.open = !!(S.cr || S.ku || S.sv);
   const sm = document.createElement('summary'); sm.textContent = kick ? 'Дополнительно (Kick)' : 'Дополнительно (Twitch)'; adv.appendChild(sm);
   const h = document.createElement('p'); h.className = 'hint';
-  h.textContent = '7TV подключается сам. Эти поля нужны, только если канал или смайлы не находятся: вставьте ссылку на набор (7tv.app/emote-sets/…) или профиль 7TV.';
+  h.textContent = '7TV подключается сам. Эти поля нужны, только если канал или смайлы не находятся: вставьте ссылку на набор (7tv.app/emote-sets/…) или профиль 7TV. Если канал Kick не находится из-за CORS — укажите свой прокси.';
   adv.appendChild(h);
   (kick ? ADV : ADV.filter(it => it[0] === 'sv')).forEach(it => adv.appendChild(ctl(it)));
   p.appendChild(adv);
@@ -1270,7 +1280,7 @@ function seed(){ chat.clear(); demoI = 0; for (let i = 0; i < 4; i++) demoMsg(ch
 function connect(){
   if (chat) chat.stop();
   const pv = $('#pv'); pv.textContent = '';
-  chat = new Chat(pv, S);
+  chat = new Chat(pv, S, true);
   chat.onStatus = (t, c) => { const st = $('#st'); st.textContent = t; st.className = 'st ' + (c || ''); };
   chat.onRaw = () => { const pre = $('#rawpre'); if (pre) pre.textContent = [...chat.raw.values()].join('\n'); };
   chat.start();
@@ -1280,7 +1290,7 @@ function connect(){
 /* --- экран 1 --- */
 function setPlatform(p){
   S.p = p; document.body.dataset.p = p;
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.p === p));
+  document.querySelectorAll('.tab').forEach(t => { const on = t.dataset.p === p; t.classList.toggle('on', on); t.setAttribute('aria-selected', on); });
   const name = p === 'kick' ? 'Kick' : 'Twitch';
   $('#sub').innerHTML = `Введите канал <b>${name}</b>, в котором нужен чат`;
   $('#pre').textContent = p === 'kick' ? 'kick.com/' : 'twitch.tv/';
