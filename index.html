@@ -138,7 +138,15 @@ button:focus-visible,select:focus-visible,summary:focus-visible,.row input:focus
 .chat .reply{display:block;font-size:.7em;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:.6em .8em;margin:-.6em -.8em}
 .chat .msg.hi{outline:2px solid #ffd43b;outline-offset:-2px}
 .chat .msg.hlm{background:rgba(145,70,255,.2)}
-.chat .msg.sys{background:rgba(136,68,255,.5);font-weight:600}
+.chat .msg.sys{
+  background:linear-gradient(90deg,rgba(145,70,255,.34) 0%,rgba(24,14,42,.58) 60%,rgba(24,14,42,.42) 100%);
+  box-shadow:inset 3px 0 0 #a970ff,inset 0 0 0 1px rgba(169,112,255,.16);
+  padding:.26em .75em .26em .8em;
+  font-size:.8em;font-weight:500;line-height:1.3;
+  color:rgba(255,255,255,.88);
+}
+.chat .msg.sys::before{content:'\2605';color:#c7a3ff;margin-right:.5em;font-size:.95em}
+.chat .msg.sys .sysn{font-weight:700;color:#fff}
 
 /* ---------- компактный вид ---------- */
 #s2{max-width:1180px}
@@ -964,7 +972,15 @@ class Chat {
         }
       }
       if (m.reply && s.rp) { const rp = document.createElement('span'); rp.className = 'reply'; rp.textContent = '↪ ' + m.reply.name + ': ' + m.reply.text; el.appendChild(rp); }
-      if (m.sys) { el.classList.add('sys'); el.appendChild(body); } else el.append(head, body);
+      if (m.sys) {
+        el.classList.add('sys');
+        const tn = body.firstChild, v = tn && tn.nodeType === 3 ? tn.nodeValue : '';
+        if (m.sysname && v.startsWith(m.sysname)) {
+          const b = document.createElement('span'); b.className = 'sysn'; b.textContent = m.sysname;
+          tn.nodeValue = v.slice(m.sysname.length); body.insertBefore(b, tn);
+        }
+        el.appendChild(body);
+      } else el.append(head, body);
       if (s.mn && s.mn.toLowerCase().split(/[\s,]+/).filter(Boolean).some(w => (m.text || '').toLowerCase().includes(w))) el.classList.add('hi');
       return el;
     };
@@ -1031,7 +1047,7 @@ class Chat {
       }
       case 'CLEARCHAT': if (m.trailing) this.delUser(m.trailing.toLowerCase()); else this.clear(); break;
       case 'USERNOTICE':
-        if (this.s.sn && t['system-msg']) { await this.ready(); this.add({sys: true, login: '', name: '', badges: [], text: '', parts: [{t:'text', v: t['system-msg'] + (m.trailing ? ' — ' + m.trailing : '')}]}); }
+        if (this.s.sn && t['system-msg']) { await this.ready(); this.add({sys: true, sysname: t['display-name'] || '', login: '', name: '', badges: [], text: '', parts: [{t:'text', v: t['system-msg'] + (m.trailing ? ' — ' + m.trailing : '')}]}); }
         break;
       case 'CLEARMSG': if (t['target-msg-id']) this.delId(t['target-msg-id']); break;
     }
@@ -1150,13 +1166,17 @@ const DEMO = [
   {name:'Зритель_01', color:'#ff7a59', badges:[{kick:'level', count:30, title:'Уровень 30'}], parts:[T('Всем привет! Отличный стрим')]},
   {name:'KappaFan', color:'#59b6ff', parts:[T('Крутой оверлей '), {t:'emote', n:true, url:'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0', name:'Kappa'}]},
   {name:'Модератор', color:'#53fc18', badges:[{kick:'moderator', title:'Модератор'}], parts:[T('Не забывайте про правила чата')]},
+  {sys:true, name:'snak_322', parts:[T("snak_322 subscribed at Tier 1. They've subscribed for 8 months, currently on a 5 month streak!")]},
   {name:'LongMessage', color:'#c77dff', badges:[{kick:'subscriber', title:'Подписчик'}], parts:[T('Длинное сообщение, чтобы проверить перенос строк, отступы и размер шрифта при разных настройках')]},
   {name:'Streamer', color:'#ff4d4d', badges:[{kick:'broadcaster', title:'Стример'}], parts:[T('Спасибо что смотрите!')]},
-  {name:'Зритель_01', color:'#ff7a59', hlm:true, parts:[T('Это выделенное сообщение!')]}
+  {name:'Зритель_01', color:'#ff7a59', hlm:true, parts:[T('Это выделенное сообщение!')]},
+  {sys:true, name:'KappaFan', parts:[T('KappaFan is gifting 5 Tier 1 Subs to Streamer\'s community!')]}
 ];
 let demoI = 0;
 function demoMsg(chat){
-  const d = DEMO[demoI++ % DEMO.length];
+  let d = DEMO[demoI++ % DEMO.length];
+  if (d.sys && !chat.s.sn) { for (let i = 0; i < DEMO.length && d.sys; i++) d = DEMO[demoI++ % DEMO.length]; }
+  if (d.sys) { chat.add({demo: true, sys: true, sysname: d.name, id: 'demo' + Date.now() + demoI, login: '', name: '', badges: [], text: '', parts: d.parts.map(p => ({...p}))}); return; }
   chat.add({demo: true, hlm: !!d.hlm, id: 'demo' + Date.now() + demoI, login: d.name.toLowerCase(), name: d.name, color: d.color, badges: d.badges || [], text: d.parts.map(p => p.v || '').join(''), parts: d.parts.map(p => ({...p}))});
 }
 
