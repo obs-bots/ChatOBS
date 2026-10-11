@@ -35,6 +35,10 @@ html,body{margin:0;min-height:100%}
 .chat.stack .head{display:flex}
 .chat.stack .sep{display:none}
 .chat.nonm .name{color:var(--tc,#fff)!important}
+.chat .mention.paint{-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.chat.shadow .msg .mention.paint{text-shadow:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.85))}
+.chat.nonm .mention{color:inherit!important}
+.chat.nonm .mention.paint{background:none!important;-webkit-text-fill-color:currentColor;filter:none!important}
 .chat .name.paint{-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
 .chat.shadow .msg .name.paint{text-shadow:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.85))}
 .chat.nonm .name.paint{background:none!important;-webkit-text-fill-color:currentColor;filter:none!important}
@@ -665,7 +669,7 @@ class Chat {
   }
   set(s){ this.s = s; applyStyle(this.root, s); this.fit(); }
   clear(){ this.root.textContent = ''; this.pend = []; this.ord = []; }
-  stop(){ this.alive = false; clearInterval(this.timer); clearInterval(this.stt); clearInterval(this.wdt); try { this.ws && this.ws.close(); } catch (e) {} }
+  stop(){ this.alive = false; clearInterval(this.timer); clearInterval(this.stt); clearInterval(this.wdt); try { this.ws && this.ws.close(); } catch (e) {} this.pkey = ''; try { this.pws && (this.pws.onclose = null, this.pws.close()); } catch (e) {} }
   status(t, c){
     if (!this.alive) return;
     this.conn = c === 'ok'; if (this.conn) this.base = t;
@@ -769,7 +773,87 @@ class Chat {
     m = v.match(/^([0-9A-Za-z]{24,26})$/); if (m) return (await bySet(m[1])) || byUser(m[1]);
     return 0;
   }
-  with7tv(parts){
+  /* ----- персональные смайлы 7TV ----- */
+  pers(){ return this.pst = this.pst || {ev: 0, sets: 0, probe: 0, hit: 0, sample: ''}; }
+  plog(){ const p = this.pers(); this.lg('7tv-pers', '7TV личные смайлы: событий ' + p.ev + ', наборов ' + p.sets + ', зрителей с набором ' + (this.pmap ? this.pmap.size : 0) + ', проверок профиля ' + p.probe + ' (нашлось ' + p.hit + ')' + (p.sample ? ' | пример: ' + p.sample : '')); }
+  /* набор -> смайлы конкретных зрителей (ключ вида KICK:123 / TWITCH:456) */
+  async addPersonal(setId, keys){
+    if (!/^[0-9A-Za-z]{24,26}$/.test(setId || '') || !keys.length) return 0;
+    this.pmap = this.pmap || new Map(); this.psets = this.psets || new Map();
+    let a = this.psets.get(setId);
+    if (!a) {
+      a = []; const url = 'https://7tv.io/v3/emote-sets/' + setId;
+      await this.fetch7tv(url, null, 'tv7:' + url, x => { a = x; });
+      this.psets.set(setId, a);
+      if (a.length) { this.pers().sets++; }
+    }
+    if (!a.length) return 0;
+    if (this.pmap.size > 3000) this.pmap.clear();
+    for (const k of keys) {
+      const m = this.pmap.get(k) || new Map();
+      for (const [i, n, z] of a) m.set(n, {id: i, zw: !!z});
+      this.pmap.set(k, m);
+    }
+    return a.length;
+  }
+  onEntitlement(d){
+    const p = this.pers(); p.ev++;
+    const b = (d && d.body) || {}, o = b.object || {}, dd = o.data || o;
+    if (!p.sample) { try { p.sample = JSON.stringify(b).slice(0, 200); } catch (e) {} }
+    const ref = dd.ref_id || o.ref_id || b.ref_id, us = dd.user || o.user || b.user || {};
+    const keys = (us.connections || []).filter(c => c && c.id).map(c => String(c.platform).toUpperCase() + ':' + c.id);
+    if (!ref || !keys.length) return;
+    this.addPersonal(String(ref), keys).then(n => { if (n) this.plog(); }, () => {});
+  }
+  startPersonal(plat, id){
+    if (!id || !this.s.tv || this.pkey === plat + ':' + id) return;
+    const gen = this.pkey = plat + ':' + id, P = plat === 'kick' ? 'KICK' : 'TWITCH';
+    if (this.pws) { this.pws.onclose = null; try { this.pws.close(); } catch (e) {} }
+    this.ptries = 0;
+    const open = () => {
+      if (!this.alive || this.pkey !== gen) return;
+      let ws; try { ws = this.pws = new WebSocket('wss://events.7tv.io/v3'); } catch (e) { return; }
+      ws.onmessage = ev => {
+        let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+        if (m.op === 1) {
+          this.ptries = 0;
+          for (const type of ['entitlement.create', 'entitlement.update'])
+            ws.send(JSON.stringify({op: 35, d: {type, condition: {ctx: 'channel', platform: P, id: String(id)}}}));
+        } else if (m.op === 0 && m.d) { try { this.onEntitlement(m.d); } catch (e) {} }
+      };
+      ws.onclose = () => { if (this.alive && this.pkey === gen) setTimeout(open, Math.min(30000, 2000 * 2 ** Math.min(this.ptries++, 4))); };
+      ws.onerror = () => {};
+    };
+    open();
+  }
+  /* запасной путь: профиль зрителя в 7TV (если личный набор лежит в его списке наборов) */
+  probePersonal(plat, uid){
+    const k = (plat === 'kick' ? 'KICK:' : 'TWITCH:') + uid;
+    this.ppr = this.ppr || new Map();
+    const old = this.ppr.get(k); if (old) return old.done ? null : old.p;
+    if (this.ppr.size > 3000) this.ppr.clear();
+    const rec = {done: false};
+    const run = async () => {
+      const P = this.pers(); P.probe++;
+      for (const base of EP.tv7) {
+        try {
+          const r = await F(`${base}/v3/users/${plat}/${encodeURIComponent(uid)}`);
+          if (r.status === 404) return;
+          if (!r.ok) continue;
+          const j = await r.json(), u = j.user || j;
+          const sets = (u.emote_sets || j.emote_sets || []).filter(x => x && x.id && ((+x.flags || 0) & 4));
+          for (const x of sets) if (await this.addPersonal(x.id, [k])) P.hit++;
+          return;
+        } catch (e) {}
+      }
+    };
+    this.pchain = (this.pchain || Promise.resolve()).then(run).catch(() => {}).then(() => new Promise(r => setTimeout(r, 120)));
+    rec.p = this.pchain.finally(() => { rec.done = true; });
+    this.ppr.set(k, rec);
+    return rec.p;
+  }
+  with7tv(parts, pk){
+    const pm = pk && this.pmap && this.pmap.get(pk);
     const out = [], sz = tv7Size(this.s);
     for (const p of parts) {
       if (p.t !== 'text') { out.push(p); continue; }
@@ -777,13 +861,13 @@ class Chat {
         if (!tok) return;
         const putText = v => { const l = out[out.length-1]; if (l && l.t === 'text' && l._m) l.v += v; else out.push({t:'text', v, _m: true}); };
         const putEm = (e, name) => out.push({t:'emote', id: e.id, url:`https://cdn.7tv.app/emote/${e.id}/${sz}.webp`, alts: [`${sz}.png`, `${sz}.gif`, '2x.webp', '1x.webp', '3x.webp', '2x.avif'].map(x => `https://cdn.7tv.app/emote/${e.id}/${x}`), name, zw: e.zw});
-        let e = this.cmap.get(tok) || this.gmap.get(tok);
+        let e = (pm && pm.get(tok)) || this.cmap.get(tok) || this.gmap.get(tok);
         if (e) { putEm(e, tok); return; }
         /* эмоут с пунктуацией: «слово,», «(слово)» */
         const lead = (tok.match(/^[\p{P}\p{S}]+/u) || [''])[0];
         const trail = (tok.match(/[\p{P}\p{S}]+$/u) || [''])[0];
         const core = tok.slice(lead.length, tok.length - (tok.length > lead.length ? trail.length : 0));
-        const e2 = core ? (this.cmap.get(core) || this.gmap.get(core)) : null;
+        const e2 = core ? ((pm && pm.get(core)) || this.cmap.get(core) || this.gmap.get(core)) : null;
         if (e2) { if (lead) putText(lead); putEm(e2, tok); if (trail && tok.length > lead.length) putText(trail); }
         else putText(tok);
       });
@@ -867,6 +951,11 @@ class Chat {
     if (meta) { f.id = meta.id; f.login = meta.login; }
     const it = {f, done: true};
     this.ord.push(it);
+    if (meta && meta.wait && this.ord.length < this.cap()) {
+      it.done = false;
+      const fin0 = () => { if (!it.done) { it.done = true; this.drain(); } };
+      meta.wait.then(fin0, fin0); setTimeout(fin0, 450);
+    }
     if (items && items.length && this.ord.length < this.cap()) {
       const need = [...new Map(items.filter(p => p.url && !imgKnown(p.url)).map(p => [p.url, p])).values()];
       if (need.length) {
@@ -925,9 +1014,20 @@ class Chat {
       if (s.hl && LINK.test(m.text || '')) return;
     }
     if (!m.demo) this.hasLive = true;
+    let urec = null;
+    if (!m.sys && m.login) {
+      this.ucol = this.ucol || new Map();
+      if (this.ucol.size > 5000) this.ucol.clear();
+      urec = {css: null, p: null};
+      this.ucol.set(m.login, urec);
+      if (m.name) this.ucol.set(String(m.name).toLowerCase(), urec);
+    }
 
     let parts = m.parts;
-    if (s.tv) parts = this.with7tv(parts);
+    const base = m.parts, pk = (s.tv && m.uid && !m.sys && !m.demo) ? (m.plat === 'kick' ? 'KICK:' : 'TWITCH:') + m.uid : '';
+    if (s.tv) parts = this.with7tv(base, pk);
+    const pw = (pk && !(this.pmap && this.pmap.has(pk))) ? this.probePersonal(m.plat, m.uid) : null;
+    if (pw) pw.then(() => { if (this.pmap && this.pmap.has(pk)) parts = this.with7tv(base, pk); }, () => {});
     /* что нужно догрузить до показа: смайлы и значки */
     const items = [];
     for (const p of parts) if (p.t === 'emote' && !(p.n && !s.em)) items.push(p);
@@ -935,6 +1035,7 @@ class Chat {
     /* раскраску ника запрашиваем сразу при получении, а не при показе */
     const pp = (this.ord.length < this.cap() && s.tv && s.pt && m.uid && !m.sys && !m.demo) ? this.paintFor(m.plat, m.uid) : null;
 
+    if (urec) urec.p = pp;
     const build = () => {
       const el = document.createElement('div'); el.className = 'msg';
       if (m.id) el.dataset.id = m.id;
@@ -945,7 +1046,7 @@ class Chat {
       (m.badges || []).forEach(b => head.appendChild(mkBadge(b)));
       const nm = document.createElement('span'); nm.className = 'name';
       nm.textContent = m.name; nm.style.color = fixColor(m.color, m.name);
-      if (pp) pp.then(css => { if (css) applyPaint(nm, css); });
+      if (pp) pp.then(css => { if (css) { applyPaint(nm, css); if (urec) urec.css = css; } });
       head.appendChild(nm);
       if (!m.action) { const sp = document.createElement('span'); sp.className = 'sep'; sp.textContent = ':'; head.appendChild(sp); }
       else { const sp = document.createElement('span'); sp.className = 'sep'; head.appendChild(sp); }
@@ -953,6 +1054,27 @@ class Chat {
       const body = document.createElement('span'); body.className = 'body';
       if (m.action) body.style.fontStyle = 'italic';
 
+      /* ник другого зрителя в тексте («@ник» или просто «ник») красится в его цвет */
+      const MRE = /^([^\p{L}\p{N}_@]*)(@?)([\p{L}\p{N}_-]{2,})([^\p{L}\p{N}_]*)$/u;
+      const addText = v => {
+        if (m.sys || !this.ucol || !this.ucol.size) { body.appendChild(document.createTextNode(v)); return; }
+        let buf = '';
+        for (const tok of v.split(/(\s+)/)) {
+          const mt = tok && MRE.exec(tok), rec = mt && this.ucol.get(mt[3].toLowerCase());
+          if (rec && (mt[2] || mt[3].length >= 3)) {
+            if (buf) { body.appendChild(document.createTextNode(buf)); buf = ''; }
+            if (mt[1]) body.appendChild(document.createTextNode(mt[1]));
+            const sp = document.createElement('span'); sp.className = 'mention';
+            sp.textContent = mt[2] + mt[3];
+            /* цвет/раскраска только из 7TV; нет её у человека — обычный цвет текста */
+            const ap = css => { if (css) { applyPaint(sp, css); sp.style.fontWeight = '700'; } };
+            if (rec.css) ap(rec.css); else if (rec.p) rec.p.then(ap, () => {});
+            body.appendChild(sp);
+            if (mt[4]) buf = mt[4];
+          } else buf += tok;
+        }
+        if (buf) body.appendChild(document.createTextNode(buf));
+      };
       let last = null;
       for (const p of parts) {
         if (p.t === 'emote') {
@@ -967,7 +1089,7 @@ class Chat {
           const st = document.createElement('span'); st.className = 'estack'; st.appendChild(img);
           body.appendChild(st); last = st;
         } else {
-          body.appendChild(document.createTextNode(p.v));
+          addText(p.v);
           if (p.v.trim()) last = null;
         }
       }
@@ -984,7 +1106,7 @@ class Chat {
       if (s.mn && s.mn.toLowerCase().split(/[\s,]+/).filter(Boolean).some(w => (m.text || '').toLowerCase().includes(w))) el.classList.add('hi');
       return el;
     };
-    this._queue(build, items, {id: m.id, login: m.login});
+    this._queue(build, items, {id: m.id, login: m.login, wait: pw});
   }
   delId(id){
     this.pend = this.pend.filter(f => f.id !== id); this.ord = this.ord.filter(it => it.f.id !== id);
@@ -1029,6 +1151,7 @@ class Chat {
             this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size);
             this.tvDone();
           };
+          this.startPersonal('twitch', this.roomId);
           this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(true), 600000);
           this.badgesP = this.loadBadges(this.roomId, ch);
         }
@@ -1094,6 +1217,7 @@ class Chat {
       this.lg('7tv-uid', '7TV: Kick ID = ' + (this.kickUid || 'не найден') + (src ? ' (' + src + ')' : ''));
       this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size);
       this.tvDone();
+      if (this.kickUid) this.startPersonal('kick', this.kickUid);
     };
     this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(true), 600000);
     const open = () => {
@@ -1152,7 +1276,7 @@ class Chat {
     };
     if (!this.raw.has('identity-keys')) { this.raw.set('identity-keys', 'identity: ' + Object.keys(idn).join(', ') + ' | sender: ' + Object.keys(sd).join(', ')); this.onRaw && this.onRaw(); }
     for (const src of [idn, sd]) for (const v of Object.values(src)) if (Array.isArray(v)) v.forEach(pushB);
-    if (!this.kickUid && sd.id && badges.some(b => b.kick === 'broadcaster')) { this.kickUid = sd.id; this.lg('7tv-uid', '7TV: Kick ID = ' + sd.id + ' (сообщение стримера)'); this.loadKick7tv(sd.id).then(() => { this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size); this.tvDone(); }); }
+    if (!this.kickUid && sd.id && badges.some(b => b.kick === 'broadcaster')) { this.kickUid = sd.id; this.lg('7tv-uid', '7TV: Kick ID = ' + sd.id + ' (сообщение стримера)'); this.startPersonal('kick', sd.id); this.loadKick7tv(sd.id).then(() => { this.lg('7tv-cnt', '7TV: смайлов канала ' + this.cmap.size + ', глобальных ' + this.gmap.size); this.tvDone(); }); }
     const lg_ = (sd.username || '').toLowerCase(); let hlm = false;
     const pw = this.rwWait && this.rwWait.get(lg_);
     if (pw) { clearTimeout(pw.t); this.rwWait.delete(lg_); hlm = /выдел|highlight/i.test(pw.title || ''); }
