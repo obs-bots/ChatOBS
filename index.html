@@ -57,6 +57,8 @@ span.badge{display:block;width:1.2em;height:1.2em;margin-right:.3em;filter:drop-
 span.badge svg{display:block;width:100%;height:100%;shape-rendering:geometricPrecision}
 span.badge.txt{width:auto;min-width:1.3em;height:1.5em;padding:0 .3em;font-size:.72em;font-weight:800;line-height:1.5em;text-align:center;border-radius:.3em;background:#2b2f3d;color:#e9ecf5;text-shadow:none;filter:none}
 
+.chat .ava{flex:none;display:block;width:1.2em;height:1.2em;margin-right:.3em;border-radius:.19em;object-fit:cover;align-self:center;background:#2b2f3d}
+
 /* ---------- ОВЕРЛЕЙ ---------- */
 body.ov{background:transparent!important}
 #ov{position:fixed;inset:0;padding:8px}
@@ -169,7 +171,7 @@ button:focus-visible,select:focus-visible,summary:focus-visible,.row input:focus
 #getlink{margin-top:10px;height:48px;font-size:17px}
 @media(min-width:560px){
   .panel{display:grid;grid-template-columns:1fr 1fr;column-gap:24px;align-content:start}
-  .panel>.grp,.panel>.adv,.panel>.dbg{grid-column:1/-1}
+  .panel>.grp,.panel>.adv,.panel>.dbg,.panel>.row.wide{grid-column:1/-1}
 }
 @media(min-width:860px){
   .panel{max-height:calc(100vh - 150px);overflow-y:auto}
@@ -393,7 +395,7 @@ const DEF = {
   p2:'twitch', c2:'', cr2:'', ku2:'', sv2:'', src:1
 };
 const KEYS = Object.keys(DEF);
-const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt','src'];
+const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt'];
 const RNG = {fs:[8,200], bgo:[0,100], br:[0,60], gap:[0,60], es:[.5,5], mx:[1,200], fo:[0,600]};
 const FONT_OK = /^[\w .-]{1,40}$/;
 function clampS(s){
@@ -403,6 +405,7 @@ function clampS(s){
   if (!['b','t'].includes(s.dir)) s.dir = 'b';
   if (!['inline','stack'].includes(s.cl)) s.cl = 'inline';
   if (s.p !== 'twitch') s.p = 'kick';
+  s.src = [0, 1, 2].includes(+s.src) ? +s.src : 1; /* 0 — без метки, 1 — значок платформы, 2 — аватарка канала */
   if (!FONT_OK.test(String(s.ff))) s.ff = 'Inter';
   s.px = String(s.px || '').trim().slice(0, 200);
   if (s.p2 !== 'kick') s.p2 = 'twitch';
@@ -589,12 +592,18 @@ async function kickInfoNet(slug, proxy){
   try {
     const j = await Promise.any(tries.map(one));
     const sb = (j.subscriber_badges || []).map(x => ({months: +x.months || 0, src: (x.badge_image && x.badge_image.src) || ''})).filter(x => /^https:\/\//.test(x.src)).sort((a, b) => a.months - b.months);
-    return {chatroom: +j.chatroom.id, userId: j.user_id || (j.user && j.user.id) || 0, subBadges: sb};
+    const av = [j.user && j.user.profile_pic, j.user && j.user.profilepic, j.profile_pic, j.profilepic].find(v => typeof v === 'string' && /^https:\/\//.test(v)) || '';
+    return {chatroom: +j.chatroom.id, userId: j.user_id || (j.user && j.user.id) || 0, subBadges: sb, avatar: av};
   } catch (e) { return null; }
 }
-async function kickInfo(slug, proxy){
+const KIP = new Map();
+function kickInfo(slug, proxy){
+  const k = slug + '|' + (proxy || ''); if (KIP.has(k)) return KIP.get(k);
+  const p = kickInfoMain(slug, proxy).finally(() => KIP.delete(k)); KIP.set(k, p); return p;
+}
+async function kickInfoMain(slug, proxy){
   const ck = 'kinfo:' + slug, c = LS.get(ck, 24 * 3600e3);
-  if (c && c.fresh && c.v && c.v.chatroom) return c.v;
+  if (c && c.fresh && c.v && c.v.chatroom && 'avatar' in c.v) return c.v;
   const r = await kickInfoNet(slug, proxy);
   if (r) { LS.set(ck, r); return r; }
   return (c && c.v && c.v.chatroom) ? c.v : null;
@@ -686,7 +695,44 @@ class Chat {
     if (this.diag) this.stt = setInterval(() => { if (PQ.req) this.lg('7tv-paint', '7TV раскраски: запросов ' + PQ.req + ', ответов ' + PQ.ok + ', с раскраской ' + PQ.hit + ', ошибок ' + PQ.err + ', в очереди ' + PQ.q.length + (PQ.sample ? ' | пример: ' + PQ.sample : '')); }, 3000);
     applyStyle(root, s);
   }
-  set(s){ this.s = s; applyStyle(this.root, s); this.fit(); }
+  set(s){ this.s = s; applyStyle(this.root, s); this.fit(); this.loadAvatar(); }
+  /* ----- аватарка канала (для метки при 2 каналах) ----- */
+  setAvatar(u){ if (/^https:\/\//.test(u || '')) { this.avatar = u; warmImg(u); } }
+  loadAvatar(){
+    if (!this.tag || this.s.src !== 2) return this.avP;
+    if (this.avP) return this.avP;
+    return this.avP = (this.s.p === 'twitch' ? this.twAvatar() : this.kickAvatar()).then(u => { if (u) this.setAvatar(u); }, () => {});
+  }
+  async kickAvatar(){
+    const info = await kickInfo(this.s.c.toLowerCase().replace(/_/g, '-'), this.s.px);
+    return info && info.avatar || '';
+  }
+  async twAvatar(){
+    const login = this.s.c.toLowerCase().replace(/^#/, ''), ck = 'twav:' + login, c = LS.get(ck, 24 * 3600e3);
+    if (c && c.fresh && c.v) return c.v;
+    let u = '';
+    try {
+      const r = await F('https://gql.twitch.tv/gql', {method: 'POST', headers: {'Client-Id': EP.twGqlId, 'Content-Type': 'application/json'}, body: JSON.stringify({query: 'query($l:String!){user(login:$l){profileImageURL(width:300)}}', variables: {l: login}})});
+      if (r.ok) { const j = await r.json(); u = (j.data && j.data.user && j.data.user.profileImageURL) || ''; }
+    } catch (e) {}
+    if (!/^https:\/\//.test(u)) {
+      try {
+        const r = await F('https://api.ivr.fi/v2/twitch/user?login=' + encodeURIComponent(login));
+        if (r.ok) { const j = await r.json(), o = Array.isArray(j) ? j[0] : j; u = (o && (o.logo || o.profileImageURL)) || ''; }
+      } catch (e) {}
+    }
+    if (/^https:\/\//.test(u)) { LS.set(ck, u); return u; }
+    return (c && c.v) || '';
+  }
+  srcMark(){
+    const t = this.tag;
+    if (this.s.src === 2 && this.avatar) {
+      const i = mkImg(this.avatar); i.alt = ''; i.title = t.c; i.className = 'ava src';
+      i.onerror = () => { this.avatar = ''; const b = srcBadge(t); if (i.parentNode) i.replaceWith(b); };
+      return i;
+    }
+    return srcBadge(t);
+  }
   clear(){ this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.src === this.sid) e.remove(); }); this.pend = []; this.ord = []; }
   stop(){ this.alive = false; clearInterval(this.timer); clearInterval(this.stt); clearInterval(this.wdt); try { this.ws && this.ws.close(); } catch (e) {} this.pkey = ''; try { this.pws && (this.pws.onclose = null, this.pws.close()); } catch (e) {} }
   status(t, c){
@@ -698,7 +744,7 @@ class Chat {
   tvDone(){ this.tvN = 1; if (this.alive && this.conn) this.onStatus(this.base + this.tvText(), 'ok'); }
   async ready(){
     if (this.doneAll || this.waited) return;
-    const all = Promise.allSettled([this.gp, this.chP, this.badgesP].filter(Boolean));
+    const all = Promise.allSettled([this.gp, this.chP, this.badgesP, this.avP].filter(Boolean));
     await Promise.race([all, new Promise(r => setTimeout(r, 1500))]);
     this.waited = true;
     if (this.chP) all.then(() => { this.doneAll = true; });
@@ -730,6 +776,7 @@ class Chat {
   lg(k, v){ this.raw.set(k, v); this.onRaw && this.onRaw(); }
   start(){
     this.gp = this.load7tv('https://7tv.io/v3/emote-sets/global', this.gmap).then(() => { this.lg('7tv-glob', '7TV: глобальных смайлов ' + this.gmap.size + (this.gmap.size ? '' : ' (7tv.io недоступен?)')); this.tvDone(); });
+    this.loadAvatar();
     this.s.p === 'twitch' ? this.twitch() : this.kick();
   }
 
@@ -1051,6 +1098,7 @@ class Chat {
     const items = [];
     for (const p of parts) if (p.t === 'emote' && !(p.n && !s.em)) items.push(p);
     if (s.bd) for (const b of (m.badges || [])) if (b.img) items.push({url: b.img});
+    if (this.tag && s.src === 2 && this.avatar && !m.sys) items.push({url: this.avatar});
     /* раскраску ника запрашиваем сразу при получении, а не при показе */
     const pp = (this.ord.length < this.cap() && s.tv && s.pt && m.uid && !m.sys && !m.demo) ? this.paintFor(m.plat, m.uid) : null;
 
@@ -1062,7 +1110,7 @@ class Chat {
       if (m.hlm) el.classList.add('hlm');
 
       const head = document.createElement('span'); head.className = 'head';
-      if (this.tag && s.src && !m.sys) head.appendChild(srcBadge(this.tag));
+      if (this.tag && s.src && !m.sys) head.appendChild(this.srcMark());
       (m.badges || []).forEach(b => head.appendChild(mkBadge(b)));
       const nm = document.createElement('span'); nm.className = 'name';
       nm.textContent = m.name; nm.style.color = fixColor(m.color, m.name);
@@ -1379,6 +1427,7 @@ const SCHEMA = [
     ['dir','select','Порядок',[['b','Новые снизу'],['t','Новые сверху']]]
   ]],
   ['Содержимое', [
+    ['src','select','Метка канала у ника',[['0','Нет'],['1','Значок платформы'],['2','Аватарка канала']]],
     ['nm','check','Цветные ники'],
     ['bd','check','Значки (бейджи)'],
     ['em','check','Смайлы платформы'],
@@ -1389,10 +1438,9 @@ const SCHEMA = [
     ['hb','check','Скрывать популярных ботов'],
     ['hl','check','Скрывать сообщения со ссылками'],
     ['rp','check','Показывать ответы (reply)'],
-    ['src','check','Метка платформы у ника (если 2 канала)'],
     ['sn','check','События Twitch: подписки, рейды'],
-    ['mn','text','Подсвечивать сообщения со словами (через запятую)'],
-    ['hu','text','Скрыть пользователей (через запятую)']
+    ['hu','text','Скрыть пользователей'],
+    ['mn','text','Подсвечивать сообщения со словами']
   ]],
   ['Поведение', [
     ['mx','range','Максимум сообщений',5,100,1,''],
@@ -1434,7 +1482,7 @@ function ctl(it){
     inp = document.createElement('select');
     (a).forEach(o => { const op = document.createElement('option'); const [v, t] = Array.isArray(o) ? o : [o, o]; op.value = v; op.textContent = t; inp.appendChild(op); });
     inp.value = S[k];
-    inp.onchange = () => { S[k] = inp.value; changed(k); };
+    inp.onchange = () => { S[k] = k === 'src' ? +inp.value : inp.value; changed(k); };
     row.append(lab, inp);
   } else {
     inp = document.createElement('input'); inp.type = 'text'; inp.value = S[k]; inp.autocomplete = 'off'; inp.spellcheck = false; inp.autocapitalize = 'none';
@@ -1449,8 +1497,9 @@ function buildPanel(){
   SCHEMA.forEach(([title, items]) => {
     const g = document.createElement('div'); g.className = 'grp'; g.textContent = title; p.appendChild(g);
     let tgs = null;
-    items.forEach(it => {
+    items.filter(it => it[0] !== 'src' || S.c2).forEach(it => {
       const el = ctl(it);
+      if (it[0] === 'es') el.classList.add('wide');
       if (it[1] === 'check') {
         if (!tgs) { tgs = document.createElement('div'); tgs.className = 'tgs'; p.appendChild(tgs); }
         tgs.appendChild(el);
@@ -1479,7 +1528,8 @@ function changed(k){
   save();
   if (!chats.length) return;
   chats.forEach((c, i) => c.set(chanS(S, i)));
-  if (k === 'em' || k === 'tv') chats.some(c => c.hasLive) ? demo() : seed();
+  if (k === 'src') Promise.all(chats.map(c => c.loadAvatar())).then(() => chats.some(c => c.hasLive) ? demo() : seed());
+  else if (k === 'em' || k === 'tv') chats.some(c => c.hasLive) ? demo() : seed();
   refreshUrl();
 }
 function refreshUrl(){ const oc = $('#outcard'); if (oc && !oc.hidden) $('#outurl').value = buildUrl(S); }
@@ -1496,7 +1546,9 @@ function connect(){
   };
   chats.forEach((c, i) => { c.onStatus = (t, cl) => { stt[i] = [t, cl || '']; upd(); }; c.onRaw = () => { const pre = $('#rawpre'); if (pre) pre.textContent = rawText(); }; });
   chats.forEach(c => c.start());
-  demoI = 0; for (let i = 0; i < 4; i++) demo();
+  demoI = 0;
+  const mine = chats, avs = chats.map(c => c.avP).filter(Boolean), first = () => { if (chats === mine) for (let i = 0; i < 4; i++) demo(); };
+  avs.length ? Promise.race([Promise.all(avs), new Promise(r => setTimeout(r, 1500))]).then(first) : first();
 }
 
 /* --- экран 1 --- */
