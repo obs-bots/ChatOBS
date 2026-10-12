@@ -895,7 +895,7 @@ class Chat {
   /* запасной путь: профиль зрителя в 7TV (если личный набор лежит в его списке наборов) */
   probePersonal(plat, uid){
     const k = (plat === 'kick' ? 'KICK:' : 'TWITCH:') + uid;
-    this.ppr = this.ppr || new Map();
+    this.ppr = window.__ppr || (window.__ppr = new Map());
     const old = this.ppr.get(k); if (old) return old.done ? null : old.p;
     if (this.ppr.size > 3000) this.ppr.clear();
     const rec = {done: false};
