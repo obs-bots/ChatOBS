@@ -1272,7 +1272,7 @@ class Chat {
       if (Object.entries(o).some(([k, v]) => (v === false && /equip|activ|enabl|select|show|visib|display/i.test(k)) || (v === true && /hidden|disabled/i.test(k)))) return;
       const key = type + '|' + (o.text || '') + '|' + (o.count || '') + '|' + img;
       if (seen.has(key)) return; seen.add(key);
-      badges.push({kick: type, title: o.text || type, count: o.count, img, level});
+      badges.push({kick: type, title: o.text || type, count: o.count, img});
     };
     if (!this.raw.has('identity-keys')) { this.raw.set('identity-keys', 'identity: ' + Object.keys(idn).join(', ') + ' | sender: ' + Object.keys(sd).join(', ')); this.onRaw && this.onRaw(); }
     for (const src of [idn, sd]) for (const v of Object.values(src)) if (Array.isArray(v)) v.forEach(pushB);
