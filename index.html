@@ -43,6 +43,7 @@ html,body{margin:0;min-height:100%}
 .chat.shadow .msg .name.paint{text-shadow:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.85))}
 .chat.nonm .name.paint{background:none!important;-webkit-text-fill-color:currentColor;filter:none!important}
 .chat.nobd .badge{display:none}
+.chat.nobd span.badge.src{display:block}
 .chat.anim .msg{animation:msgin .28s ease-out}
 .chat .msg.out{opacity:0;transition:opacity .7s}
 @keyframes msgin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -291,6 +292,11 @@ body.cfg::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
 .btn2{height:36px;border-radius:12px;font:700 13px 'Space Grotesk','Inter',sans-serif;padding:0 14px}
 .urlrow input{height:36px;border-radius:12px;font-size:12.5px}
 body.cfg{color-scheme:dark}
+#s1 .inrow select{flex:none;width:104px;padding:13px 10px;font:14px var(--mono);background:#0d1017;color:#e6e7ef;border:1px solid rgba(255,255,255,.09);border-radius:12px;outline:none}
+#s1 .inrow select:focus{border-color:rgba(var(--rgb),.55)}
+#s1 .addch{display:block;margin:-6px auto 16px;background:none;border:0;color:#8b93a3;font:500 12px var(--mono);cursor:pointer;padding:4px 8px;border-radius:8px}
+#s1 .addch:hover{color:var(--accent)}
+#row2 .back{flex:none}
 </style>
 </head>
 <body>
@@ -309,6 +315,12 @@ body.cfg{color-scheme:dark}
     <div class="inrow">
       <span class="pre" id="pre"></span>
       <input id="ch" aria-label="Ник канала" placeholder="nickname" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </div>
+    <button class="addch" id="add2" type="button">+ добавить второй канал (в один чат)</button>
+    <div class="inrow" id="row2" hidden>
+      <select id="p2" aria-label="Платформа второго канала"><option value="kick">Kick</option><option value="twitch">Twitch</option></select>
+      <input id="ch2" aria-label="Ник второго канала" placeholder="nickname" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <button class="back" id="rm2" type="button" aria-label="Убрать второй канал">✕</button>
     </div>
     <button class="cta" id="go" type="button">Подключиться</button>
     <p class="note">Примечание: <code>nickname</code> может отличаться в ссылке.<br>Можно вставить ссылку на канал целиком.</p>
@@ -377,10 +389,11 @@ const DEF = {
   fs:22, ff:'Inter', tc:'ffffff', sh:1, cl:'inline',
   bgo:40, bgc:'000000', br:10, gap:6, an:1, dir:'b',
   nm:1, bd:1, em:1, tv:1, es:1.5, hc:0, hu:'',
-  mx:40, fo:0, fc:'', hb:0, hl:0, rp:1, sn:1, mn:'', pt:1
+  mx:40, fo:0, fc:'', hb:0, hl:0, rp:1, sn:1, mn:'', pt:1,
+  p2:'twitch', c2:'', cr2:'', ku2:'', sv2:'', src:1
 };
 const KEYS = Object.keys(DEF);
-const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt'];
+const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt','src'];
 const RNG = {fs:[8,200], bgo:[0,100], br:[0,60], gap:[0,60], es:[.5,5], mx:[1,200], fo:[0,600]};
 const FONT_OK = /^[\w .-]{1,40}$/;
 function clampS(s){
@@ -392,6 +405,9 @@ function clampS(s){
   if (s.p !== 'twitch') s.p = 'kick';
   if (!FONT_OK.test(String(s.ff))) s.ff = 'Inter';
   s.px = String(s.px || '').trim().slice(0, 200);
+  if (s.p2 !== 'kick') s.p2 = 'twitch';
+  s.c2 = String(s.c2 || '').trim().replace(/^@/, '').slice(0, 60);
+  for (const k of ['cr2','ku2','sv2']) s[k] = String(s[k] || '').trim().slice(0, 200);
   if (s.fc && !FONT_OK.test(String(s.fc))) s.fc = '';
   return s;
 }
@@ -409,6 +425,7 @@ function buildUrl(s){
   u.set('p', s.p); u.set('c', s.c);
   for (const k of KEYS) {
     if (k==='p' || k==='c') continue;
+    if (!s.c2 && /2$/.test(k)) continue;
     if (s[k] !== DEF[k] && s[k] !== '') u.set(k, s[k]);
   }
   return location.href.split('#')[0].split('?')[0] + '?' + u.toString();
@@ -584,9 +601,9 @@ async function kickInfo(slug, proxy){
 }
 const BI = {
   broadcaster:'<rect width="16" height="16" rx="3" fill="#e91916"/><rect x="6" y="2.5" width="4" height="7" rx="2" fill="#fff"/><path d="M4 8a4 4 0 008 0M8 12v2M5.5 14h5" stroke="#fff" stroke-width="1.2" fill="none"/>',
-  moderator:'<rect width="16" height="16" rx="3" fill="#1d6bff"/><g transform="rotate(45 8 8)"><rect x="3.2" y="3" width="9.6" height="4" rx=".7" fill="#fff"/><rect x="7" y="7" width="2" height="6.5" rx=".5" fill="#fff"/></g>',
-  vip:'<rect x=".5" y=".5" width="15" height="15" rx="3" fill="#1b1b24" stroke="#e8a317"/><path d="M3 11.5v-6l3 3L8 4.5l2 4 3-3v6z" fill="#f5b81c"/>',
-  og:'<rect x=".5" y=".5" width="15" height="15" rx="3" fill="#0b2433" stroke="#38d4e8"/><text x="8" y="11.3" font-size="8.5" font-weight="900" text-anchor="middle" fill="#38d4e8" font-family="Arial,sans-serif">OG</text>',
+  moderator:'<rect width="16" height="16" rx=".6" fill="#17adfb"/><path d="M9 7.4L2.6 13.2" stroke="#1c1f24" stroke-width="1.7" stroke-linecap="round" fill="none"/><g transform="rotate(49 9.7 6.3)" fill="#1c1f24"><rect x="5.8" y="4.5" width="7.8" height="3.6" rx=".8"/><rect x="5.3" y="4" width="1.9" height="4.6" rx=".8"/><rect x="12.2" y="4" width="1.9" height="4.6" rx=".8"/></g>',
+  vip:'<rect width="16" height="16" rx="1.2" fill="#ffb90f"/><path d="M2.4 12.7L1.7 6.3 5 8.6 8 3.1 11 8.6 14.3 6.3 13.6 12.7z" fill="#17121f"/>',
+  og:'<defs><linearGradient id="kogb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2fa8d8"/><stop offset="1" stop-color="#146a98"/></linearGradient></defs><path fill="#22f4ef" fill-rule="evenodd" d="M1.5 0h5a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1 -1.5 1.5h-5a1.5 1.5 0 0 1 -1.5 -1.5v-13a1.5 1.5 0 0 1 1.5 -1.5zM3.3 1.9h1.5v6.6h-1.5zM3.3 9.5h1.5v4.7h-1.5z"/><path fill="#22f4ef" fill-rule="evenodd" d="M9.6 0h5.2a1.2 1.2 0 0 1 1.2 1.2v5.5a1.2 1.2 0 0 1 -1.2 1.2h-5.2a1.2 1.2 0 0 1 -1.2 -1.2v-5.5a1.2 1.2 0 0 1 1.2 -1.2zM10.9 1.8h1.4v3h-1.4zM13.6 3.9h2.4v1.2h-2.4z"/><path fill="url(#kogb)" fill-rule="evenodd" d="M9.6 8.1h5.2a1.2 1.2 0 0 1 1.2 1.2v5.5a1.2 1.2 0 0 1 -1.2 1.2h-5.2a1.2 1.2 0 0 1 -1.2 -1.2v-5.5a1.2 1.2 0 0 1 1.2 -1.2zM10.9 10.2h1.4v3.2h-1.4zM13.6 12.3h2.4v1.2h-2.4z"/>',
   founder:'<rect x=".5" y=".5" width="15" height="15" rx="3" fill="#1b1b24" stroke="#e8a317"/><circle cx="8" cy="8" r="5.3" fill="#f5b81c"/><path d="M6.8 6.6l1.3-.8v4.7" stroke="#6b4300" stroke-width="1.3" fill="none"/>',
   verified:'<rect width="16" height="16" rx="3" fill="#0f2a0a"/><path d="M8 1.5l2 1.5h2.5l.8 2.4 1.7 1.6-1 2.3.3 2.5-2.4.8L10 14.5 8 13.2 6 14.5l-1.9-1.9-2.4-.8.3-2.5-1-2.3L2.7 5.4l.8-2.4H6z" fill="#53fc18"/><path d="M5.2 8.2l2 2 3.6-4" stroke="#062100" stroke-width="1.5" fill="none"/>',
   subscriber:'<rect width="16" height="16" rx="3" fill="#0f2a0a"/><path d="M8 2l1.6 4.4L14 8l-4.4 1.6L8 14l-1.6-4.4L2 8l4.4-1.6z" fill="#53fc18"/>',
@@ -594,6 +611,8 @@ const BI = {
   staff:'<rect width="16" height="16" rx="3" fill="#0b1a02"/><text x="8" y="12.2" font-size="11" font-weight="900" text-anchor="middle" fill="#53fc18" font-family="Arial,sans-serif">K</text>',
   sidekick:'<rect width="16" height="16" rx="3" fill="#2a0a0a"/><path d="M2 6.5c2-1.5 4-1 6 0 2-1 4-1.5 6 0l-1 3c-1.5 1-3 .5-5-.5-2 1-3.5 1.5-5 .5z" fill="#ff3b3b"/>'
 };
+BI.src_kick = '<rect width="16" height="16" rx="3" fill="#000"/><text x="8" y="12.4" font-size="11.5" font-weight="900" text-anchor="middle" fill="#53fc18" font-family="Arial,sans-serif">K</text>';
+BI.src_twitch = '<rect width="16" height="16" rx="3" fill="#9146ff"/><path d="M3.3 2.2h10v7.1l-3 3H8.4L6.6 14v-1.7H3.3z" fill="#fff"/><rect x="7.2" y="4.6" width="1.2" height="3.2" fill="#9146ff"/><rect x="10" y="4.6" width="1.2" height="3.2" fill="#9146ff"/>';
 BI.global_moderator = BI.moderator; BI.global_admin = BI.staff; BI.admin = BI.staff;
 const TW = {
   broadcaster: BI.broadcaster,
@@ -660,15 +679,15 @@ function applyPaint(nm, css){
 
 /* ================= ЧАТ ================= */
 class Chat {
-  constructor(root, s, diag){
-    this.root = root; this.s = s; this.diag = !!diag; this.gmap = new Map(); this.cmap = new Map();
+  constructor(root, s, diag, tag, sid){
+    this.root = root; this.s = s; this.diag = !!diag; this.tag = tag || null; this.sid = String(sid || 0); this.gmap = new Map(); this.cmap = new Map();
     this.tbadges = {}; this.alive = true; this.onStatus = () => {}; this.raw = new Map(); this.onRaw = null;
     this.pend = []; this.ord = []; this.flushing = false;
     if (this.diag) this.stt = setInterval(() => { if (PQ.req) this.lg('7tv-paint', '7TV раскраски: запросов ' + PQ.req + ', ответов ' + PQ.ok + ', с раскраской ' + PQ.hit + ', ошибок ' + PQ.err + ', в очереди ' + PQ.q.length + (PQ.sample ? ' | пример: ' + PQ.sample : '')); }, 3000);
     applyStyle(root, s);
   }
   set(s){ this.s = s; applyStyle(this.root, s); this.fit(); }
-  clear(){ this.root.textContent = ''; this.pend = []; this.ord = []; }
+  clear(){ this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.src === this.sid) e.remove(); }); this.pend = []; this.ord = []; }
   stop(){ this.alive = false; clearInterval(this.timer); clearInterval(this.stt); clearInterval(this.wdt); try { this.ws && this.ws.close(); } catch (e) {} this.pkey = ''; try { this.pws && (this.pws.onclose = null, this.pws.close()); } catch (e) {} }
   status(t, c){
     if (!this.alive) return;
@@ -1039,10 +1058,11 @@ class Chat {
     const build = () => {
       const el = document.createElement('div'); el.className = 'msg';
       if (m.id) el.dataset.id = m.id;
-      el.dataset.login = m.login || '';
+      el.dataset.login = m.login || ''; el.dataset.src = this.sid;
       if (m.hlm) el.classList.add('hlm');
 
       const head = document.createElement('span'); head.className = 'head';
+      if (this.tag && s.src && !m.sys) head.appendChild(srcBadge(this.tag));
       (m.badges || []).forEach(b => head.appendChild(mkBadge(b)));
       const nm = document.createElement('span'); nm.className = 'name';
       nm.textContent = m.name; nm.style.color = fixColor(m.color, m.name);
@@ -1110,11 +1130,11 @@ class Chat {
   }
   delId(id){
     this.pend = this.pend.filter(f => f.id !== id); this.ord = this.ord.filter(it => it.f.id !== id);
-    this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.id === id) e.remove(); });
+    this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.id === id && e.dataset.src === this.sid) e.remove(); });
   }
   delUser(l){
     this.pend = this.pend.filter(f => f.login !== l); this.ord = this.ord.filter(it => it.f.login !== l);
-    this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.login === l) e.remove(); });
+    this.root.querySelectorAll('.msg').forEach(e => { if (e.dataset.login === l && e.dataset.src === this.sid) e.remove(); });
   }
 
   /* ----- Twitch ----- */
@@ -1284,6 +1304,18 @@ class Chat {
   }
 }
 
+/* ================= НЕСКОЛЬКО КАНАЛОВ В ОДНОМ ЧАТЕ ================= */
+function chanS(s, i){ return i ? {...s, p: s.p2, c: s.c2, cr: s.cr2, ku: s.ku2, sv: s.sv2} : s; }
+function srcBadge(t){
+  const b = mkBadge(t.same ? {title: t.c, count: String(t.c).slice(0, 3)} : {kick: 'src_' + t.p, title: t.p === 'kick' ? 'Kick' : 'Twitch'});
+  b.classList.add('src'); return b;
+}
+function makeChats(root, s, diag){
+  const two = !!s.c2 && !(s.p2 === s.p && s.c2.toLowerCase() === String(s.c).toLowerCase());
+  const mk = i => { const cs = chanS(s, i); return new Chat(root, cs, diag, two ? {p: cs.p, c: cs.c, same: s.p === s.p2} : null, i); };
+  return two ? [mk(0), mk(1)] : [mk(0)];
+}
+
 /* ================= ДЕМО ================= */
 const T = v => ({t:'text', v});
 const DEMO = [
@@ -1311,7 +1343,7 @@ if (params.get('c')) {
   document.documentElement.style.background = 'transparent';
   const root = document.getElementById('ov'); root.hidden = false;
   const s = fromQuery();
-  new Chat(root, s).start();
+  makeChats(root, s, false).forEach(c => c.start());
   return;
 }
 
@@ -1323,7 +1355,7 @@ const $ = s => document.querySelector(s);
 window.addEventListener('error', e => { if (chat && chat.diag) chat.lg('js-err', 'JS: ' + (e.message || e.type) + ' @ ' + String(e.filename || '').split('/').pop() + ':' + e.lineno); });
 window.addEventListener('unhandledrejection', e => { if (chat && chat.diag) chat.lg('js-rej', 'Promise: ' + ((e.reason && e.reason.message) || e.reason)); });
 const FONTS = ['Inter','Roboto','Montserrat','Nunito','Oswald','IBM Plex Mono','Arial','Segoe UI'];
-let S = {...DEF}, chat = null;
+let S = {...DEF}, chat = null, chats = [];
 
 try { const sv = JSON.parse(localStorage.getItem('obschat.v1') || 'null'); if (sv) for (const k of KEYS) if (k in sv && typeof sv[k] === typeof DEF[k]) S[k] = sv[k]; clampS(S); } catch (e) {}
 let saveT = 0;
@@ -1357,6 +1389,7 @@ const SCHEMA = [
     ['hb','check','Скрывать популярных ботов'],
     ['hl','check','Скрывать сообщения со ссылками'],
     ['rp','check','Показывать ответы (reply)'],
+    ['src','check','Метка платформы у ника (если 2 канала)'],
     ['sn','check','События Twitch: подписки, рейды'],
     ['mn','text','Подсвечивать сообщения со словами (через запятую)'],
     ['hu','text','Скрыть пользователей (через запятую)']
@@ -1366,6 +1399,7 @@ const SCHEMA = [
     ['fo','range','Исчезать через (0 = не исчезать)',0,120,1,'с']
   ]]
 ];
+const ADV2 = [['cr2','text','2-й канал: Chatroom ID'],['ku2','text','2-й канал: Kick User ID (для 7TV)'],['sv2','text','2-й канал: 7TV ссылка на набор или профиль']];
 const ADV = [['cr','text','Chatroom ID'],['ku','text','Kick User ID (для 7TV)'],['sv','text','7TV: ссылка на набор смайлов или профиль'],['px','text','Свой CORS-прокси для Kick API (https://…/?u=)']];
 
 function ctl(it){
@@ -1404,7 +1438,7 @@ function ctl(it){
     row.append(lab, inp);
   } else {
     inp = document.createElement('input'); inp.type = 'text'; inp.value = S[k]; inp.autocomplete = 'off'; inp.spellcheck = false; inp.autocapitalize = 'none';
-    const adv = k === 'cr' || k === 'ku' || k === 'sv';
+    const adv = ['cr','ku','sv','cr2','ku2','sv2'].includes(k);
     inp.addEventListener(adv || k === 'fc' ? 'change' : 'input', () => { S[k] = inp.value.trim(); adv ? (save(), connect(), refreshUrl()) : changed(k); });
     row.append(lab, inp);
   }
@@ -1425,36 +1459,44 @@ function buildPanel(){
   });
   const kick = S.p === 'kick';
   const adv = document.createElement('details'); adv.className = 'adv';
-  adv.open = !!(S.cr || S.ku || S.sv);
+  adv.open = !!(S.cr || S.ku || S.sv || S.cr2 || S.ku2 || S.sv2);
   const sm = document.createElement('summary'); sm.textContent = kick ? 'Дополнительно (Kick)' : 'Дополнительно (Twitch)'; adv.appendChild(sm);
   const h = document.createElement('p'); h.className = 'hint';
   h.textContent = '7TV подключается сам. Эти поля нужны, только если канал или смайлы не находятся: вставьте ссылку на набор (7tv.app/emote-sets/…) или профиль 7TV. Если канал Kick не находится из-за CORS — укажите свой прокси.';
   adv.appendChild(h);
   (kick ? ADV : ADV.filter(it => it[0] === 'sv')).forEach(it => adv.appendChild(ctl(it)));
+  if (S.c2) (S.p2 === 'kick' ? ADV2 : ADV2.filter(it => it[0] === 'sv2')).forEach(it => adv.appendChild(ctl(it)));
   p.appendChild(adv);
   const d = document.createElement('details'); d.className = 'dbg';
   d.innerHTML = '<summary>Диагностика: значки и 7TV</summary><p class="hint">Здесь видно, как нашёлся 7TV, сколько значков загрузилось и какие данные пришли из чата. Если что-то работает не так, скопируйте этот текст.</p><pre id="rawpre">пока пусто…</pre><button class="chip" id="rawcopy" type="button">Копировать</button>';
   p.appendChild(d);
   d.querySelector('#rawcopy').onclick = async () => { const t = $('#rawpre').textContent; try { await navigator.clipboard.writeText(t); } catch (e) {} };
-  if (chat && chat.raw.size) $('#rawpre').textContent = [...chat.raw.values()].join('\n');
+  if (chats.length) { const r = rawText(); if (r) $('#rawpre').textContent = r; }
 }
+const rawText = () => chats.flatMap(c => [...c.raw.values()]).join('\n');
+const demo = () => chats.length && demoMsg(chats[demoI % chats.length]);
 function changed(k){
   save();
-  if (!chat) return;
-  chat.set(S);
-  if (k === 'em' || k === 'tv') chat.hasLive ? demoMsg(chat) : seed();
+  if (!chats.length) return;
+  chats.forEach((c, i) => c.set(chanS(S, i)));
+  if (k === 'em' || k === 'tv') chats.some(c => c.hasLive) ? demo() : seed();
   refreshUrl();
 }
 function refreshUrl(){ const oc = $('#outcard'); if (oc && !oc.hidden) $('#outurl').value = buildUrl(S); }
-function seed(){ chat.clear(); demoI = 0; for (let i = 0; i < 4; i++) demoMsg(chat); }
+function seed(){ chats.forEach(c => c.clear()); demoI = 0; for (let i = 0; i < 4; i++) demo(); }
 function connect(){
-  if (chat) chat.stop();
+  chats.forEach(c => c.stop());
   const pv = $('#pv'); pv.textContent = '';
-  chat = new Chat(pv, S, true);
-  chat.onStatus = (t, c) => { const st = $('#st'); st.textContent = t; st.className = 'st ' + (c || ''); };
-  chat.onRaw = () => { const pre = $('#rawpre'); if (pre) pre.textContent = [...chat.raw.values()].join('\n'); };
-  chat.start();
-  demoI = 0; for (let i = 0; i < 4; i++) demoMsg(chat);
+  chats = makeChats(pv, S, true); chat = chats[0];
+  const stt = chats.map(() => ['подключение…', 'wait']), nm = c => c.s.p === 'kick' ? 'Kick' : 'Twitch';
+  const upd = () => {
+    const st = $('#st');
+    st.textContent = chats.length > 1 ? stt.map((x, i) => nm(chats[i]) + ': ' + x[0]).join(' | ') : stt[0][0];
+    st.className = 'st ' + (stt.some(x => x[1] === 'err') ? 'err' : stt.every(x => x[1] === 'ok') ? 'ok' : 'wait');
+  };
+  chats.forEach((c, i) => { c.onStatus = (t, cl) => { stt[i] = [t, cl || '']; upd(); }; c.onRaw = () => { const pre = $('#rawpre'); if (pre) pre.textContent = rawText(); }; });
+  chats.forEach(c => c.start());
+  demoI = 0; for (let i = 0; i < 4; i++) demo();
 }
 
 /* --- экран 1 --- */
@@ -1471,33 +1513,43 @@ function clean(v){
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => setPlatform(t.dataset.p));
 setPlatform(S.p === 'twitch' ? 'twitch' : 'kick');
 $('#ch').value = S.c || '';
+function syncRow2(){ const on = !!S.c2; $('#row2').hidden = !on; $('#add2').hidden = on; $('#ch2').value = S.c2 || ''; $('#p2').value = S.p2 === 'kick' ? 'kick' : 'twitch'; }
+syncRow2();
+$('#add2').onclick = () => { $('#row2').hidden = false; $('#add2').hidden = true; $('#p2').value = S.p === 'kick' ? 'twitch' : 'kick'; $('#ch2').focus(); };
+$('#rm2').onclick = () => { $('#row2').hidden = true; $('#add2').hidden = false; $('#ch2').value = ''; };
+$('#ch2').addEventListener('input', e => { const v = e.target.value; if (/twitch\.tv\//i.test(v)) $('#p2').value = 'twitch'; else if (/kick\.com\//i.test(v)) $('#p2').value = 'kick'; });
+$('#ch2').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 
 function go(){
   const v = clean($('#ch').value);
   if (!v) { const i = $('#ch'); i.classList.add('bad'); i.focus(); return; }
-  S.c = v; save();
+  S.c = v;
+  S.c2 = $('#row2').hidden ? '' : clean($('#ch2').value);
+  S.p2 = $('#p2').value === 'kick' ? 'kick' : 'twitch';
+  save();
   $('#s1').hidden = true; $('#s2').hidden = false;
-  $('#ttl').innerHTML = `${S.p === 'kick' ? 'Kick' : 'Twitch'}: <span></span>`;
-  $('#ttl span').textContent = v;
+  const pn = p => p === 'kick' ? 'Kick' : 'Twitch';
+  $('#ttl').innerHTML = `${pn(S.p)}: <span></span>` + (S.c2 ? ` + ${pn(S.p2)}: <span></span>` : '');
+  const tsp = $('#ttl').querySelectorAll('span'); tsp[0].textContent = v; if (tsp[1]) tsp[1].textContent = S.c2;
   $('#outcard').hidden = true;
   buildPanel(); connect(); window.scrollTo(0, 0);
 }
 $('#go').onclick = go;
 $('#imp').addEventListener('input', e => {
   const el = e.target, v = el.value.trim(); el.classList.remove('bad'); if (!v) return;
-  try { const n = fromQuery(new URL(v).search); if (!n.c) throw 0; S = n; setPlatform(S.p); $('#ch').value = S.c; el.value = ''; go(); }
+  try { const n = fromQuery(new URL(v).search); if (!n.c) throw 0; S = n; setPlatform(S.p); $('#ch').value = S.c; syncRow2(); el.value = ''; go(); }
   catch (er) { el.classList.add('bad'); }
 });
 $('#ch').addEventListener('input', e => e.target.classList.remove('bad'));
 $('#ch').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-$('#back').onclick = () => { if (chat) chat.stop(); chat = null; $('#s2').hidden = true; $('#s1').hidden = false; };
+$('#back').onclick = () => { chats.forEach(c => c.stop()); chats = []; chat = null; $('#s2').hidden = true; $('#s1').hidden = false; };
 
 /* --- экран 2 --- */
 document.querySelectorAll('.chip[data-bg]').forEach(b => b.onclick = () => {
   document.querySelectorAll('.chip[data-bg]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); });
   $('#pvbox').dataset.bg = b.dataset.bg;
 });
-$('#demo').onclick = () => chat && demoMsg(chat);
+$('#demo').onclick = () => demo();
 $('#getlink').onclick = () => {
   const url = buildUrl(S);
   $('#outurl').value = url;
