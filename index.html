@@ -583,19 +583,25 @@ function twitchParts(text, emotesTag, sz){
 
 /* ================= KICK ================= */
 async function kickInfoNet(slug, proxy){
-  // Теперь канал ищется через ваш Worker (официальный API Kick).
-  // chatroom/userId здесь = broadcaster_user_id, он же Kick User ID для 7TV.
+  // Канал ищется через ваш Worker (официальный API Kick): chatroom/userId здесь = broadcaster_user_id.
+  // Параллельно (best-effort) просим у Worker картинки значков подписчиков и аватар.
+  const post = (path, ms) => window.fetch(RELAY + path, {method: 'POST', signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(ms) : undefined});
+  const extra = post('/api/lookup?slug=' + encodeURIComponent(slug), 12000).then(r => r.ok ? r.json() : null).catch(() => null);
+  let id = 0;
   // Worker делает несколько запросов к Kick подряд, поэтому таймаут длинный (20 с) и есть повтор.
-  for (let t = 0; t < 2; t++) {
+  for (let t = 0; t < 2 && !id; t++) {
     try {
-      const r = await window.fetch(RELAY + '/api/subscribe?slug=' + encodeURIComponent(slug), {method: 'POST', signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined});
-      if (r.status === 404) return null;
+      const r = await post('/api/subscribe?slug=' + encodeURIComponent(slug), 20000);
+      if (r.status === 404) break;
       if (!r.ok) continue;
-      const j = await r.json(); const id = +j.broadcaster_user_id;
-      if (id > 0) return {chatroom: id, userId: id, subBadges: [], avatar: ''};
+      id = +(await r.json()).broadcaster_user_id || 0;
     } catch (e) {}
   }
-  return null;
+  if (!(id > 0)) return null;
+  const x = await extra;
+  const sb = ((x && x.subscriber_badges) || []).map(b => ({months: +b.months || 0, src: b.src || ''})).filter(b => /^https:\/\//.test(b.src)).sort((a, b) => a.months - b.months);
+  const av = (x && typeof x.avatar === 'string' && /^https:\/\//.test(x.avatar)) ? x.avatar : '';
+  return {chatroom: id, userId: id, subBadges: sb, avatar: av};
 }
 const KIP = new Map();
 function kickInfo(slug, proxy){
@@ -603,7 +609,7 @@ function kickInfo(slug, proxy){
   const p = kickInfoMain(slug, proxy).finally(() => KIP.delete(k)); KIP.set(k, p); return p;
 }
 async function kickInfoMain(slug, proxy){
-  const ck = 'kinfo2:' + slug, c = LS.get(ck, 24 * 3600e3);
+  const ck = 'kinfo3:' + slug, c = LS.get(ck, 24 * 3600e3);
   if (c && c.fresh && c.v && c.v.chatroom && 'avatar' in c.v) return c.v;
   const r = await kickInfoNet(slug, proxy);
   if (r) { LS.set(ck, r); return r; }
@@ -1275,7 +1281,7 @@ class Chat {
     const bid = info && +info.userId || 0;
     if (!bid) { this.status('канал не найден или Worker недоступен', 'err'); return; }
     const uid = +this.s.ku || bid;
-    this.subBadges = [];
+    this.subBadges = info.subBadges || [];
     this.kickUid = uid;
     this.loadCh = async (force) => {
       let src = this.kickUid ? (+this.s.ku ? 'вручную' : 'API Kick') : '';
