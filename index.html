@@ -375,6 +375,7 @@ body.cfg{color-scheme:dark}
 'use strict';
 
 /* ================= КОНСТАНТЫ ================= */
+const RELAY = 'https://kick-raffle-relay.obsbots77.workers.dev';
 const EP = {
   tv7: ['https://7tv.io', 'https://api.7tv.app'],
   gql: ['https://7tv.io/v3/gql', 'https://api.7tv.app/v3/gql'],
@@ -582,18 +583,14 @@ function twitchParts(text, emotesTag, sz){
 
 /* ================= KICK ================= */
 async function kickInfoNet(slug, proxy){
-  const url = EP.kickApi(slug);
-  const one = async u => {
-    const r = await F(u); if (!r.ok) throw 0;
-    const j = await r.json(); if (!(j && j.chatroom && Number.isInteger(+j.chatroom.id) && +j.chatroom.id > 0)) throw 0;
-    return j;
-  };
-  const tries = proxy ? [proxy + encodeURIComponent(url)] : [url, ...EP.kickCors.map(p => p + encodeURIComponent(url))];
+  // Теперь канал ищется через ваш Worker (официальный API Kick).
+  // chatroom/userId здесь = broadcaster_user_id, он же Kick User ID для 7TV.
   try {
-    const j = await Promise.any(tries.map(one));
-    const sb = (j.subscriber_badges || []).map(x => ({months: +x.months || 0, src: (x.badge_image && x.badge_image.src) || ''})).filter(x => /^https:\/\//.test(x.src)).sort((a, b) => a.months - b.months);
-    const av = [j.user && j.user.profile_pic, j.user && j.user.profilepic, j.profile_pic, j.profilepic].find(v => typeof v === 'string' && /^https:\/\//.test(v)) || '';
-    return {chatroom: +j.chatroom.id, userId: j.user_id || (j.user && j.user.id) || 0, subBadges: sb, avatar: av};
+    const r = await F(RELAY + '/api/subscribe?slug=' + encodeURIComponent(slug), {method: 'POST'});
+    if (!r.ok) return null;
+    const j = await r.json(); const id = +j.broadcaster_user_id;
+    if (!(id > 0)) return null;
+    return {chatroom: id, userId: id, subBadges: [], avatar: ''};
   } catch (e) { return null; }
 }
 const KIP = new Map();
@@ -602,7 +599,7 @@ function kickInfo(slug, proxy){
   const p = kickInfoMain(slug, proxy).finally(() => KIP.delete(k)); KIP.set(k, p); return p;
 }
 async function kickInfoMain(slug, proxy){
-  const ck = 'kinfo:' + slug, c = LS.get(ck, 24 * 3600e3);
+  const ck = 'kinfo2:' + slug, c = LS.get(ck, 24 * 3600e3);
   if (c && c.fresh && c.v && c.v.chatroom && 'avatar' in c.v) return c.v;
   const r = await kickInfoNet(slug, proxy);
   if (r) { LS.set(ck, r); return r; }
@@ -1268,14 +1265,13 @@ class Chat {
   /* ----- Kick ----- */
   async kick(){
     const slug = this.s.c.toLowerCase().replace(/_/g, '-');
-    let id = +this.s.cr || 0, uid = +this.s.ku || 0;
-    if (!id) {
-      this.status('поиск канала…', 'wait');
-      const info = await kickInfo(slug, this.s.px);
-      if (!this.alive) return;
-      if (info) { id = info.chatroom; uid = uid || info.userId; this.subBadges = info.subBadges || []; }
-    }
-    if (!id) { this.status('канал не найден: укажите Chatroom ID в «Дополнительно»', 'err'); return; }
+    this.status('поиск канала…', 'wait');
+    const info = await kickInfo(slug, this.s.px);
+    if (!this.alive) return;
+    const bid = info && +info.userId || 0;
+    if (!bid) { this.status('канал не найден или Worker недоступен', 'err'); return; }
+    const uid = +this.s.ku || bid;
+    this.subBadges = [];
     this.kickUid = uid;
     this.loadCh = async (force) => {
       let src = this.kickUid ? (+this.s.ku ? 'вручную' : 'API Kick') : '';
@@ -1291,23 +1287,26 @@ class Chat {
     const open = () => {
       if (!this.alive) return;
       this.status('подключение…', 'wait');
-      const ws = this.ws = new WebSocket(EP.pusher);
-      this.bind(ws, JSON.stringify({event:'pusher:ping', data:{}}), open);
+      const ws = this.ws = new WebSocket(RELAY.replace(/^http/, 'ws') + '/ws?channel=' + bid);
+      this.bind(ws, 'ping', open);
+      ws.onopen = () => this.status('подключено: ' + slug, 'ok');
       ws.onmessage = ev => {
+        if (ev.data === 'pong') return;
         let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-        const ev_ = m.event;
-        if (ev_ === 'pusher:connection_established') ws.send(JSON.stringify({event:'pusher:subscribe', data:{auth:'', channel:`chatrooms.${id}.v2`}}));
-        else if (ev_ === 'pusher:subscription_succeeded') this.status('подключено: ' + slug, 'ok');
-        else if (ev_ === 'pusher:ping') ws.send(JSON.stringify({event:'pusher:pong', data:{}}));
-        else if (ev_ === 'App\\Events\\ChatMessageEvent') { try { this.kickMsg(JSON.parse(m.data)); } catch (e) {} }
-        else if (/RewardRedeem/i.test(String(ev_))) { try { this.kickReward(JSON.parse(m.data)); } catch (e) {} }
-        else if (ev_ === 'App\\Events\\MessageDeletedEvent') { try { const d = JSON.parse(m.data); d.message && this.delId(String(d.message.id)); } catch (e) {} }
-        else if (ev_ === 'App\\Events\\UserBannedEvent') { try { const d = JSON.parse(m.data); d.user && this.delUser((d.user.username || '').toLowerCase()); } catch (e) {} }
-        else if (ev_ && !/^pusher/.test(ev_) && this.raw.size < 24) this.lg('ev:' + ev_, 'событие Kick: ' + String(ev_).replace('App\\Events\\', ''));
+        if (m.type === 'chat') { try { this.kickMsg(this.kickNorm(m.data)); } catch (e) {} }
       };
       ws.onclose = () => this.reopen(open); ws.onerror = () => {};
     };
     open();
+  }
+  // приводим payload официального вебхука к формату, который понимает kickMsg
+  kickNorm(d){
+    const s = d.sender || {}, i = s.identity || {}, rp = d.replies_to;
+    return {
+      id: d.message_id, content: d.content || '',
+      sender: {id: s.user_id, username: s.username, identity: {color: i.username_color, badges: i.badges || []}},
+      metadata: rp ? {original_sender: {username: (rp.sender || {}).username || ''}, original_message: {content: rp.content || ''}} : {}
+    };
   }
   kickReward(d){
     const r = d.reward || {};
