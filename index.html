@@ -585,13 +585,17 @@ function twitchParts(text, emotesTag, sz){
 async function kickInfoNet(slug, proxy){
   // Теперь канал ищется через ваш Worker (официальный API Kick).
   // chatroom/userId здесь = broadcaster_user_id, он же Kick User ID для 7TV.
-  try {
-    const r = await F(RELAY + '/api/subscribe?slug=' + encodeURIComponent(slug), {method: 'POST'});
-    if (!r.ok) return null;
-    const j = await r.json(); const id = +j.broadcaster_user_id;
-    if (!(id > 0)) return null;
-    return {chatroom: id, userId: id, subBadges: [], avatar: ''};
-  } catch (e) { return null; }
+  // Worker делает несколько запросов к Kick подряд, поэтому таймаут длинный (20 с) и есть повтор.
+  for (let t = 0; t < 2; t++) {
+    try {
+      const r = await window.fetch(RELAY + '/api/subscribe?slug=' + encodeURIComponent(slug), {method: 'POST', signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(20000) : undefined});
+      if (r.status === 404) return null;
+      if (!r.ok) continue;
+      const j = await r.json(); const id = +j.broadcaster_user_id;
+      if (id > 0) return {chatroom: id, userId: id, subBadges: [], avatar: ''};
+    } catch (e) {}
+  }
+  return null;
 }
 const KIP = new Map();
 function kickInfo(slug, proxy){
