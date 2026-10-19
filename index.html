@@ -375,15 +375,14 @@ body.cfg{color-scheme:dark}
 'use strict';
 
 /* ================= КОНСТАНТЫ ================= */
-const RELAY = 'https://kick-raffle-relay.obsbots77.workers.dev';
 const EP = {
   tv7: ['https://7tv.io', 'https://api.7tv.app'],
   gql: ['https://7tv.io/v3/gql', 'https://api.7tv.app/v3/gql'],
   kickApi: slug => `https://kick.com/api/v2/channels/${slug}`,
-  pusher: 'wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0-rc2&flash=false',
+  pusher: 'wss://ws-us2.pusher.com/app/34bf7a0ff419a2a775b9?protocol=7&client=js&version=7.4.0&flash=false',
   twIrc: 'wss://irc-ws.chat.twitch.tv:443',
   twGqlId: 'kimne78kx3ncx6brgo4mv6wki5h1ko',
-  kickCors: ['https://corsproxy.io/?', 'https://api.allorigins.win/raw?url=']
+  kickCors: ['https://corsproxy.io/?url=', 'https://api.allorigins.win/raw?url=', 'https://api.codetabs.com/v1/proxy?quest=']
 };
 
 /* ================= НАСТРОЙКИ ================= */
@@ -582,26 +581,40 @@ function twitchParts(text, emotesTag, sz){
 }
 
 /* ================= KICK ================= */
+// Один запрос к API Kick с жёстким таймаутом; outer позволяет отменить его снаружи,
+// когда другой источник (прокси) уже ответил первым.
+async function kickFetchJson(url, ms, outer){
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), ms), onAbort = () => ctrl.abort();
+  if (outer) outer.addEventListener('abort', onAbort);
+  try {
+    const r = await window.fetch(url, {headers: {'Accept': 'application/json'}, signal: ctrl.signal});
+    if (!r.ok) { const e = new Error('http ' + r.status); e.notFound = r.status === 404; throw e; }
+    const j = await r.json();
+    if (!j || !j.chatroom || !j.chatroom.id) throw new Error('нет chatroom.id');
+    return j;
+  } finally { clearTimeout(timer); if (outer) outer.removeEventListener('abort', onAbort); }
+}
 async function kickInfoNet(slug, proxy){
-  // Канал ищется через ваш Worker (официальный API Kick): chatroom/userId здесь = broadcaster_user_id.
-  // Параллельно (best-effort) просим у Worker картинки значков подписчиков и аватар.
-  const post = (path, ms) => window.fetch(RELAY + path, {method: 'POST', signal: (window.AbortSignal && AbortSignal.timeout) ? AbortSignal.timeout(ms) : undefined});
-  const extra = post('/api/lookup?slug=' + encodeURIComponent(slug), 12000).then(r => r.ok ? r.json() : null).catch(() => null);
-  let id = 0;
-  // Worker делает несколько запросов к Kick подряд, поэтому таймаут длинный (20 с) и есть повтор.
-  for (let t = 0; t < 2 && !id; t++) {
-    try {
-      const r = await post('/api/subscribe?slug=' + encodeURIComponent(slug), 20000);
-      if (r.status === 404) break;
-      if (!r.ok) continue;
-      id = +(await r.json()).broadcaster_user_id || 0;
-    } catch (e) {}
+  // Как в fix.html: сначала напрямую (6 с); если не вышло (CORS, сеть, таймаут) — все прокси
+  // параллельно, берём первый удачный ответ. Честный 404 от Kick = «канала нет».
+  const url = EP.kickApi(slug);
+  let j = null;
+  try { j = await kickFetchJson(url, 6000); } catch (e) { if (e && e.notFound) return null; }
+  if (!j) {
+    const mk = [];
+    if (proxy) mk.push(u => proxy + encodeURIComponent(u));   // свой прокси из «Дополнительно»
+    EP.kickCors.forEach(p => mk.push(u => p + encodeURIComponent(u)));
+    const cancel = new AbortController();
+    try { j = await Promise.any(mk.map(f => kickFetchJson(f(url), 8000, cancel.signal))); }
+    catch (e) { return null; }
+    finally { cancel.abort(); }
   }
-  if (!(id > 0)) return null;
-  const x = await extra;
-  const sb = ((x && x.subscriber_badges) || []).map(b => ({months: +b.months || 0, src: b.src || ''})).filter(b => /^https:\/\//.test(b.src)).sort((a, b) => a.months - b.months);
-  const av = (x && typeof x.avatar === 'string' && /^https:\/\//.test(x.avatar)) ? x.avatar : '';
-  return {chatroom: id, userId: id, subBadges: sb, avatar: av};
+  const user = j.user || {};
+  const uid = +(j.user_id || user.id) || 0;
+  const https = s => typeof s === 'string' && /^https:\/\//.test(s);
+  const sb = (j.subscriber_badges || []).map(b => ({months: +b.months || 0, src: (b.badge_image && b.badge_image.src) || b.src || ''})).filter(b => https(b.src)).sort((a, b) => a.months - b.months);
+  const av = https(user.profile_pic) ? user.profile_pic : (https(user.profilePic) ? user.profilePic : '');
+  return {chatroom: +j.chatroom.id, userId: uid, subBadges: sb, avatar: av};
 }
 const KIP = new Map();
 function kickInfo(slug, proxy){
@@ -609,7 +622,7 @@ function kickInfo(slug, proxy){
   const p = kickInfoMain(slug, proxy).finally(() => KIP.delete(k)); KIP.set(k, p); return p;
 }
 async function kickInfoMain(slug, proxy){
-  const ck = 'kinfo3:' + slug, c = LS.get(ck, 24 * 3600e3);
+  const ck = 'kinfo4:' + slug, c = LS.get(ck, 24 * 3600e3);
   if (c && c.fresh && c.v && c.v.chatroom && 'avatar' in c.v) return c.v;
   const r = await kickInfoNet(slug, proxy);
   if (r) { LS.set(ck, r); return r; }
@@ -1278,10 +1291,15 @@ class Chat {
     this.status('поиск канала…', 'wait');
     const info = await kickInfo(slug, this.s.px);
     if (!this.alive) return;
-    const bid = info && +info.userId || 0;
-    if (!bid) { this.status('канал не найден или Worker недоступен', 'err'); return; }
-    const uid = +this.s.ku || bid;
-    this.subBadges = info.subBadges || [];
+    // Chatroom ID можно задать вручную («Дополнительно»), если API Kick не отвечает
+    const room = (+String(this.s.cr || '').trim() || 0) || (info && +info.chatroom) || 0;
+    if (!room) {
+      this.status('канал не найден — укажите Chatroom ID или прокси в «Дополнительно»; повтор через 15 с', 'err');
+      setTimeout(() => this.alive && this.kick(), 15000);
+      return;
+    }
+    const uid = +this.s.ku || (info && +info.userId) || 0;
+    this.subBadges = (info && info.subBadges) || [];
     this.kickUid = uid;
     this.loadCh = async (force) => {
       let src = this.kickUid ? (+this.s.ku ? 'вручную' : 'API Kick') : '';
@@ -1294,29 +1312,56 @@ class Chat {
       if (this.kickUid) this.startPersonal('kick', this.kickUid);
     };
     this.chP = this.loadCh(); this.timer = setInterval(() => this.loadCh(true), 600000);
+
+    /* Подключение как в fix.html: публичный Pusher Kick, подписка на каналы чата,
+       ping/pong, контроль подтверждения подписки. */
+    const channels = ['chatrooms.' + room + '.v2', 'chatroom.' + room + '.v2', 'chatrooms.' + room, 'chatroom.' + room];
+    const primary = channels[0], PING = JSON.stringify({event: 'pusher:ping', data: {}});
+    const seen = new Set();   // один и тот же id сообщения может прийти по нескольким именам канала
     const open = () => {
       if (!this.alive) return;
       this.status('подключение…', 'wait');
-      const ws = this.ws = new WebSocket(RELAY.replace(/^http/, 'ws') + '/ws?channel=' + bid);
-      this.bind(ws, 'ping', open);
-      ws.onopen = () => this.status('подключено: ' + slug, 'ok');
+      let ws, subscribed = false, phase = null;
+      try { ws = this.ws = new WebSocket(EP.pusher); } catch (e) { this.reopen(open); return; }
+      const send = (event, data) => { try { ws.send(JSON.stringify({event, data: data || {}})); } catch (e) {} };
+      const retry = () => { clearTimeout(phase); ws.onclose = null; try { ws.close(); } catch (e) {} this.reopen(open); };
+      const markOk = () => { if (subscribed) return; subscribed = true; clearTimeout(phase); this.status('подключено: ' + slug, 'ok'); };
+      this.bind(ws, PING, open);
+      phase = setTimeout(() => { if (!subscribed && ws === this.ws) retry(); }, 20000);
       ws.onmessage = ev => {
-        if (ev.data === 'pong') return;
-        let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-        if (m.type === 'chat') { try { this.kickMsg(this.kickNorm(m.data)); } catch (e) {} }
+        let o; try { o = JSON.parse(ev.data); } catch (e) { return; }
+        if (!o || typeof o.event !== 'string') return;
+        const parse = d => typeof d === 'string' ? JSON.parse(d) : d;
+        if (o.event === 'pusher:ping') { send('pusher:pong'); return; }
+        if (o.event === 'pusher:pong') return;
+        if (o.event === 'pusher:connection_established') { channels.forEach(channel => send('pusher:subscribe', {channel})); return; }
+        if (o.event === 'pusher_internal:subscription_succeeded') { if (o.channel === primary) markOk(); return; }
+        if (o.event === 'pusher:error' || o.event === 'pusher_internal:subscription_error') {
+          let d = null; try { d = parse(o.data); } catch (e) {}
+          const ch = o.channel || (d && d.channel), code = Number(d && d.code) || 0;
+          if (ch && ch !== primary && channels.includes(ch)) return;   // запасные имена канала могут не существовать
+          // 4000–4099 (кроме 4004) — неверный ключ/протокол: повтор ничего не изменит
+          if (code >= 4000 && code < 4100 && code !== 4004) {
+            clearTimeout(phase); clearInterval(this.wdt); ws.onclose = null; try { ws.close(); } catch (e) {}
+            this.status('сервер отклонил подключение к чату (код ' + code + ')', 'err');
+            return;
+          }
+          retry(); return;
+        }
+        if (/App\\Events\\ChatMessage(Sent)?Event$/.test(o.event)) {
+          if (!channels.includes(o.channel)) return;
+          let d; try { d = parse(o.data); } catch (e) { return; }
+          if (!d || !d.sender || typeof d.content !== 'string') return;
+          markOk();
+          const id = String(d.id || '');
+          if (id) { if (seen.has(id)) return; seen.add(id); if (seen.size > 300) seen.delete(seen.values().next().value); }
+          try { this.kickMsg(d); } catch (e) {}
+        }
       };
-      ws.onclose = () => this.reopen(open); ws.onerror = () => {};
+      ws.onclose = () => { clearTimeout(phase); this.reopen(open); };
+      ws.onerror = () => {};
     };
     open();
-  }
-  // приводим payload официального вебхука к формату, который понимает kickMsg
-  kickNorm(d){
-    const s = d.sender || {}, i = s.identity || {}, rp = d.replies_to;
-    return {
-      id: d.message_id, content: d.content || '',
-      sender: {id: s.user_id, username: s.username, identity: {color: i.username_color, badges: i.badges || []}},
-      metadata: rp ? {original_sender: {username: (rp.sender || {}).username || ''}, original_message: {content: rp.content || ''}} : {}
-    };
   }
   kickReward(d){
     const r = d.reward || {};
