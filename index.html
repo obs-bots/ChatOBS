@@ -1116,7 +1116,8 @@ class Chat {
     if (pw) pw.then(() => { if (this.pmap && this.pmap.has(pk)) parts = this.with7tv(base, pk); }, () => {});
     /* что нужно догрузить до показа: смайлы и значки */
     const items = [];
-    for (const p of parts) if (p.t === 'emote' && !(p.n && !s.em)) items.push(p);
+    /* смайлы не ждём: если картинка ещё не загружена, в сообщении будет текст, а картинка догрузится в фоне для следующих */
+    for (const p of parts) if (p.t === 'emote' && !(p.n && !s.em) && p.url) warmImg(p.url, p.alts);
     if (s.bd) for (const b of (m.badges || [])) if (b.img) items.push({url: b.img});
     if (this.tag && s.src === 2 && this.avatar && !m.sys) items.push({url: this.avatar});
     /* раскраску ника запрашиваем сразу при получении, а не при показе */
@@ -1167,12 +1168,30 @@ class Chat {
       for (const p of parts) {
         if (p.t === 'emote') {
           if (p.n && !s.em) { body.appendChild(document.createTextNode(p.name)); last = null; continue; }
-          const img = mkImg(p.url); img.alt = p.name; img.className = 'emote';
-          if (!img.complete) img.onload = () => this.fitSoon();
-          if (p.alts && p.alts.length) {
-            let fi = 0;
-            img.onerror = () => { if (fi < p.alts.length) img.src = p.alts[fi++]; else this.lg('img', 'Картинки смайлов 7TV не загружаются: проверьте доступ к cdn.7tv.app'); };
+          /* картинка ещё не прогрузилась — пишем название смайла текстом, а загрузку продолжаем в фоне */
+          const mkEm = () => {
+            const img = mkImg(p.url); img.alt = p.name; img.className = 'emote';
+            if (!img.complete) img.onload = () => this.fitSoon();
+            if (p.alts && p.alts.length) {
+              let fi = 0;
+              img.onerror = () => { if (fi < p.alts.length) img.src = p.alts[fi++]; else this.lg('img', 'Картинки смайлов 7TV не загружаются: проверьте доступ к cdn.7tv.app'); };
+            }
+            return img;
+          };
+          const ce = EC.get(p.url);
+          if (!(ce && ce.img)) {
+            /* ещё не прогрузился: сначала текст, а когда картинка загрузится — меняем текст на смайл прямо в этом сообщении */
+            const ph = document.createElement('span'); ph.className = 'etxt'; ph.textContent = p.name;
+            body.appendChild(ph); last = null;
+            warmImg(p.url, p.alts).then(u => {
+              if (!u || !this.alive) return;
+              const st = document.createElement('span'); st.className = 'estack'; st.appendChild(mkEm());
+              ph.replaceWith(st);
+              this.fitSoon();
+            }, () => {});
+            continue;
           }
+          const img = mkEm();
           if (p.zw && last) { img.classList.add('zw'); last.appendChild(img); continue; }
           const st = document.createElement('span'); st.className = 'estack'; st.appendChild(img);
           body.appendChild(st); last = st;
@@ -1347,6 +1366,20 @@ class Chat {
             return;
           }
           retry(); return;
+        }
+        // Модерация Kick: удалённое сообщение, бан/тайм-аут пользователя, очистка чата —
+        // убираем из виджета (так же, как CLEARMSG/CLEARCHAT у Twitch).
+        if (/App\\Events\\(MessageDeleted|UserBanned|ChatroomClear)Event$/.test(o.event)) {
+          if (!channels.includes(o.channel)) return;
+          let d; try { d = parse(o.data); } catch (e) { return; }
+          if (/MessageDeleted/.test(o.event)) {
+            const mid = d && ((d.message && d.message.id) || d.message_id);
+            if (mid) this.delId(String(mid));
+          } else if (/UserBanned/.test(o.event)) {
+            const u = d && d.user, l = String((u && (u.username || u.slug)) || '').toLowerCase();
+            if (l) { this.delUser(l); if (u.slug) this.delUser(String(u.slug).toLowerCase()); }
+          } else this.clear();
+          return;
         }
         if (/App\\Events\\ChatMessage(Sent)?Event$/.test(o.event)) {
           if (!channels.includes(o.channel)) return;
