@@ -492,7 +492,7 @@ function mkImg(url){
 
 /* ---- постоянный кэш раскрасок ников 7TV (между перезапусками OBS) ---- */
 let PST = {};
-try { PST = JSON.parse(localStorage.getItem('obschat.pc') || '{}') || {}; } catch (e) { PST = {}; }
+try { PST = JSON.parse(localStorage.getItem('obschat.pc2') || '{}') || {}; } catch (e) { PST = {}; }
 const P_PTTL = 12 * 3600e3; let pstT = 0;
 function pstSet(k, v){
   PST[k] = [Date.now(), v || 0];
@@ -501,7 +501,7 @@ function pstSet(k, v){
     pstT = 0;
     const ks = Object.keys(PST);
     if (ks.length > 600) ks.sort((a, b) => PST[a][0] - PST[b][0]).slice(0, ks.length - 500).forEach(x => delete PST[x]);
-    try { localStorage.setItem('obschat.pc', JSON.stringify(PST)); } catch (e) {}
+    try { localStorage.setItem('obschat.pc2', JSON.stringify(PST)); } catch (e) {}
   }, 5000);
 }
 const BOTS = new Set(['nightbot','streamelements','streamlabs','moobot','fossabot','wizebot','botrix','kickbot','sery_bot','soundalerts']);
@@ -689,7 +689,7 @@ function mkBadge(b){
 }
 
 /* ================= 7TV РАСКРАСКИ НИКОВ ================= */
-const UCACHE = new Map(), PCACHE = new Map();
+const UCACHE = new Map(), PCACHE = new Map(), BCACHE = new Map();
 const PQ = {q: [], run: 0, max: 4, pause: 0, req: 0, ok: 0, hit: 0, err: 0, sample: ''};
 const P_TTL = 15 * 60e3, P_ERR_TTL = 20e3, P_QMAX = 300;
 const c4 = n => { n = n >>> 0; return `rgba(${n >>> 24},${(n >>> 16) & 255},${(n >>> 8) & 255},${((n & 255) / 255).toFixed(3)})`; };
@@ -986,6 +986,31 @@ class Chat {
     }
     return null;
   }
+  /* значок 7TV: берём из ответа профиля, если там есть host, иначе спрашиваем GQL */
+  async badgeDef(bid, inl){
+    if (!/^[0-9A-Za-z]{20,32}$/.test(bid)) return null;
+    if (BCACHE.has(bid)) return BCACHE.get(bid);
+    const mk = d => {
+      const h = d && d.host, u = h && h.url ? String(h.url) : '';
+      if (!u) return null;
+      const url = (u.startsWith('//') ? 'https:' + u : u) + '/2x.webp';
+      return /^https:\/\//.test(url) ? {url, title: d.tooltip || d.name || '7TV'} : null;
+    };
+    let r = mk(inl);
+    if (!r) {
+      const q = `query{cosmetics(list:["${bid}"]){badges{id name tooltip host{url}}}}`;
+      for (const ep of EP.gql) {
+        try {
+          const x = await F(ep, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({query: q})});
+          if (!x.ok) continue;
+          const j = await x.json(), d = j.data && j.data.cosmetics && j.data.cosmetics.badges && j.data.cosmetics.badges[0];
+          if (d) { r = mk(d); break; }
+        } catch (e) {}
+      }
+    }
+    if (r) BCACHE.set(bid, r);
+    return r;
+  }
   async loadPaint(plat, uid){
     PQ.req++;
     for (const base of EP.tv7) {
@@ -998,12 +1023,19 @@ class Chat {
         if (!PQ.sample && (st.paint_id || st.paint)) PQ.sample = JSON.stringify(st).slice(0, 220);
         PQ.ok++;
         const pid = st.paint_id || (st.paint && st.paint.id);
+        let out = null;
         if (pid) {
           const css = (st.paint && paintCss(st.paint)) || await this.paintDef(pid);
-          if (css) { PQ.hit++; return css; }
+          if (css) out = {...css};
         }
-        if (st.color) { PQ.hit++; return {solid: c4(st.color)}; }
-        return null;
+        if (!out && st.color) out = {solid: c4(st.color)};
+        const bid = st.badge_id || (st.badge && st.badge.id);
+        if (bid) {
+          const b = await this.badgeDef(bid, st.badge);
+          if (b) out = {...(out || {}), bimg: b.url, btitle: b.title};
+        }
+        if (out) PQ.hit++;
+        return out;
       } catch (e) {}
     }
     PQ.err++;
@@ -1146,7 +1178,16 @@ class Chat {
       (m.badges || []).forEach(b => head.appendChild(mkBadge(b)));
       const nm = document.createElement('span'); nm.className = 'name';
       nm.textContent = m.name; nm.style.color = fixColor(m.color, m.name);
-      if (pp) pp.then(css => { if (css) { applyPaint(nm, css); if (urec) urec.css = css; } });
+      if (pp) pp.then(css => {
+        if (!css) return;
+        if (css.bg || css.solid) { applyPaint(nm, css); if (urec) urec.css = css; }
+        if (css.bimg && head.isConnected !== false) {
+          const bi = mkImg(css.bimg); bi.alt = ''; bi.title = css.btitle || '7TV'; bi.className = 'badge';
+          bi.onload = () => this.fitSoon(); bi.onerror = () => bi.remove();
+          head.insertBefore(bi, nm);
+          this.fitSoon();
+        }
+      });
       head.appendChild(nm);
       if (!m.action) { const sp = document.createElement('span'); sp.className = 'sep'; sp.textContent = ':'; head.appendChild(sp); }
       else { const sp = document.createElement('span'); sp.className = 'sep'; head.appendChild(sp); }
@@ -1167,7 +1208,7 @@ class Chat {
             const sp = document.createElement('span'); sp.className = 'mention';
             sp.textContent = mt[2] + mt[3];
             /* цвет/раскраска только из 7TV; нет её у человека — обычный цвет текста */
-            const ap = css => { if (css) { applyPaint(sp, css); sp.style.fontWeight = '700'; } };
+            const ap = css => { if (css && (css.bg || css.solid)) { applyPaint(sp, css); sp.style.fontWeight = '700'; } };
             if (rec.css) ap(rec.css); else if (rec.p) rec.p.then(ap, () => {});
             body.appendChild(sp);
             if (mt[4]) buf = mt[4];
@@ -1540,7 +1581,7 @@ const SCHEMA = [
     ['em','check','Смайлы платформы'],
     ['tv','check','Смайлы 7TV'],
     ['gf','check','Гифки Twitch (выключено — показывается только текст)'],
-    ['pt','check','Раскраски ников 7TV (градиенты, эффекты)'],
+    ['pt','check','Раскраски ников и значки 7TV'],
     ['es','range','Размер смайлов',1,3,0.1,'×'],
     ['gs','range','Размер гифок',0.3,3,0.1,'×'],
     ['hc','check','Скрывать команды (начинаются с !)'],
