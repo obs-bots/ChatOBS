@@ -52,7 +52,7 @@ html,body{margin:0;min-height:100%}
 .estack{position:relative;display:inline-block;vertical-align:middle;line-height:0;margin:-.3em .1em}
 .estack .emote{display:block;height:calc(1em*var(--es,1.5));width:auto}
 .gifw{display:block;line-height:0;margin:.25em 0 .1em}
-.gifw .gif{display:block;max-width:min(100%,14em);max-height:10em;width:auto;height:auto;border-radius:6px}
+.gifw .gif{display:block;max-width:min(100%,calc(14em*var(--gs,1)));max-height:calc(10em*var(--gs,1));width:auto;height:auto;border-radius:6px}
 .estack .emote.zw{position:absolute;left:50%;top:0;transform:translateX(-50%)}
 img.badge{width:1.15em;height:1.15em;margin-right:.3em;object-fit:contain;border-radius:3px}
 span.badge{display:block;width:1.2em;height:1.2em;margin-right:.3em;filter:drop-shadow(0 0 1px rgba(0,0,0,.6))}
@@ -392,13 +392,13 @@ const DEF = {
   p:'kick', c:'', cr:'', ku:'', sv:'', px:'',
   fs:22, ff:'Inter', tc:'ffffff', sh:1, cl:'inline',
   bgo:40, bgc:'000000', br:10, gap:6, an:1, dir:'b',
-  nm:1, bd:1, em:1, tv:1, es:1.5, hc:0, hu:'',
+  nm:1, bd:1, em:1, tv:1, es:1.5, gs:1, hc:0, hu:'',
   mx:40, fo:0, fc:'', hb:0, hl:0, rp:1, sn:1, mn:'', pt:1, gf:1,
   p2:'twitch', c2:'', cr2:'', ku2:'', sv2:'', src:1
 };
 const KEYS = Object.keys(DEF);
 const BOOL = ['sh','an','nm','bd','em','tv','hc','hb','hl','rp','sn','pt','gf'];
-const RNG = {fs:[8,200], bgo:[0,100], br:[0,60], gap:[0,60], es:[.5,5], mx:[1,200], fo:[0,600]};
+const RNG = {fs:[8,200], bgo:[0,100], br:[0,60], gap:[0,60], es:[.5,5], gs:[.3,4], mx:[1,200], fo:[0,600]};
 const FONT_OK = /^[\w .-]{1,40}$/;
 function clampS(s){
   for (const k in RNG) s[k] = Number.isFinite(+s[k]) ? Math.min(RNG[k][1], Math.max(RNG[k][0], +s[k])) : DEF[k];
@@ -537,6 +537,7 @@ function applyStyle(root, s){
   root.style.setProperty('--mbg', rgba(s.bgc, s.bgo/100));
   root.style.setProperty('--br', s.br + 'px');
   root.style.setProperty('--es', s.es);
+  root.style.setProperty('--gs', s.gs);
   root.style.gap = s.gap + 'px';
   root.style.flexDirection = s.dir === 't' ? 'column-reverse' : 'column';
   root.classList.toggle('shadow', !!s.sh);
@@ -1538,9 +1539,10 @@ const SCHEMA = [
     ['bd','check','Значки (бейджи)'],
     ['em','check','Смайлы платформы'],
     ['tv','check','Смайлы 7TV'],
-    ['gf','check','Гифки Twitch'],
+    ['gf','check','Гифки Twitch (выключено — показывается только текст)'],
     ['pt','check','Раскраски ников 7TV (градиенты, эффекты)'],
     ['es','range','Размер смайлов',1,3,0.1,'×'],
+    ['gs','range','Размер гифок',0.3,3,0.1,'×'],
     ['hc','check','Скрывать команды (начинаются с !)'],
     ['hb','check','Скрывать популярных ботов'],
     ['hl','check','Скрывать сообщения со ссылками'],
@@ -1606,7 +1608,7 @@ function buildPanel(){
     let tgs = null;
     items.filter(it => it[0] !== 'src' || S.c2).forEach(it => {
       const el = ctl(it);
-      if (it[0] === 'es') el.classList.add('wide');
+      if (it[0] === 'es' || it[0] === 'gs') el.classList.add('wide');
       if (it[1] === 'check') {
         if (!tgs) { tgs = document.createElement('div'); tgs.className = 'tgs'; p.appendChild(tgs); }
         tgs.appendChild(el);
